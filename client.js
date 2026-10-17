@@ -42,7 +42,7 @@ window.__ModuleLoader__.load({
         sizeHint: '按档差自动计算各尺码，并支持厘米 / 英寸互相转换',
         sizeAddRow: '＋ 添加尺码',
         sizeRemoveRow: '删除',
-        sizeGenerated: '已按档差生成尺码表',
+        sizeGenerated: '已载入示例尺码数据',
         sizeNewLabel: '新尺码',
         sizeSizeHeader: '尺码',
         sizeUploadTitle: '尺码表图片',
@@ -267,7 +267,7 @@ window.__ModuleLoader__.load({
         sizeHint: 'Grade every size from a base size and convert between centimetres and inches',
         sizeAddRow: '+ Add size',
         sizeRemoveRow: 'Remove',
-        sizeGenerated: 'Size chart generated from the grading values',
+        sizeGenerated: 'Sample size data loaded',
         sizeNewLabel: 'New',
         sizeSizeHeader: 'Size',
         sizeUploadTitle: 'Size chart photo',
@@ -1819,6 +1819,8 @@ window.__ModuleLoader__.load({
       const handleActivateProfile = useCallback(async id => {
         if (!id) return
         setDraft(prev => (prev ? { ...prev, activeId: id } : prev))
+        // A probe result belongs to the previously selected endpoint.
+        setTestState(null)
         try {
           const json = await api('/settings', {
             method: 'POST',
