@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="pbw-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f6fed"/>
+      <stop offset="1" stop-color="#7c4dff"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#pbw-g)"/>
+  <rect x="14" y="14" width="15" height="15" rx="4" fill="#ffffff" fill-opacity="0.95"/>
+  <rect x="35" y="14" width="15" height="15" rx="4" fill="#ffffff" fill-opacity="0.6"/>
+  <rect x="14" y="35" width="15" height="15" rx="4" fill="#ffffff" fill-opacity="0.6"/>
+  <path d="M42.5 33.5l2.2 5.3 5.3 2.2-5.3 2.2-2.2 5.3-2.2-5.3-5.3-2.2 5.3-2.2z" fill="#ffffff"/>
+</svg>
