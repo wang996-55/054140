@@ -785,7 +785,7 @@ window.__ModuleLoader__.load({
           模特展示: '从脖子处裁切',
           取景: '画面顶部从模特颈部开始，头部完全位于画面之外',
           必定出现: ['颈部', '肩部', '胸部', '腰部', '臀部', '双腿', '商品裤子（腰头、门襟、口袋、裤腿与裤脚）'],
-          必定不会出现: ['头部', '面部', '五官', '眼睛', '鼻子', '嘴巴', '耳朵', '头发', '头顶', '额头', '下巴'],
+          画面之外绝不出现: ['头部', '面部', '五官', '眼睛', '鼻子', '嘴巴', '耳朵', '头发', '头顶', '额头', '下巴'],
           商品完整性: '商品从腰头到裤脚完整入镜，不被裁切或遮挡',
         },
       },
@@ -1958,15 +1958,23 @@ window.__ModuleLoader__.load({
       // Framing (face visible / crop at neck / crop at chest) only means anything
       // when a model is part of the shot; otherwise the studio hides the chips.
       const framing = hasModel ? findOption(SHOW, form.show) : null
+      const neckCrop = Boolean(framing && framing.id === 'neck')
 
       const parts = []
       if (hasModelSheet) {
-        parts.push('专业电商服装摄影，以模特参考图中的同一模特为原型，严格保持其面部、发型与身形一致')
+        // "keep the same face and hair" and "head outside the frame" cannot both
+        // be obeyed, and the model resolves that conflict by drawing the head.
+        // With a neck crop the face clause is therefore dropped from the wording.
+        parts.push(
+          neckCrop
+            ? '专业电商服装摄影，以模特参考图中的同一模特为原型，严格保持其身形、体态、肤色与服装贴合度一致（头部不在画面内，不参考面部与发型）'
+            : '专业电商服装摄影，以模特参考图中的同一模特为原型，严格保持其面部、发型与身形一致',
+        )
         if (modelPrompt) parts.push(modelPrompt)
       } else if (modelPrompt) {
         parts.push(`专业电商服装摄影，模特：${modelPrompt}`)
       } else {
-        parts.push('专业电商商品摄影')
+        parts.push('专业电商服装摄影')
       }
 
       // The JSON composition block is computed here but is NOT pushed into the
@@ -1992,7 +2000,12 @@ window.__ModuleLoader__.load({
       if (backgroundPrompt) background = background ? `${background}，${backgroundPrompt}` : `背景：${backgroundPrompt}`
       parts.push(background || '干净的纯色影棚背景')
       if (form.extraPrompt && form.extraPrompt.trim()) parts.push(form.extraPrompt.trim())
-      if (ZH_RATIO[form.ratio]) parts.push(ZH_RATIO[form.ratio])
+      // A "full-body fashion framing" line fights the neck crop: the model satisfies
+      // the whole-body request by including the head. The crop rule wins.
+      const ratioText = neckCrop
+        ? String(ZH_RATIO[form.ratio] || '').replace('全身时装取景', '颈部以下取景')
+        : ZH_RATIO[form.ratio]
+      if (ratioText) parts.push(ratioText)
       // The aspect ratio + resolution chips decide the real output size; write
       // that spec into the prompt as well so the model composes for it.
       const outputSpec = resolveOutputSpec(form)
@@ -2008,6 +2021,12 @@ window.__ModuleLoader__.load({
       // the Chinese paragraph and never repeated at the tail.
       let text = framingRules ? `${framingRules}\n${paragraph}` : paragraph
       if (form.strictFidelity) text += `\n\n${fidelityText || FIDELITY_MODULE}`
+      // Recency decides: the leading JSON block alone lost to the long prose after
+      // it, so the crop rule is restated as the last instruction (a visible face
+      // was the symptom). It stays out of the negative list, which is user content.
+      if (neckCrop) {
+        text += '\n构图硬性要求：画面从模特颈部开始，头部、面部、五官与头发完全不出现，画面内不要出现脸。'
+      }
       if (form.includeNegative && form.negative && form.negative.trim()) {
         text += `\n【严禁出现】${form.negative.trim()}。`
       }
