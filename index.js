@@ -21,6 +21,7 @@
  *   GET/POST/DELETE /ref/products                    -> persisted product ref set
  *   GET  /ref-image         -> serve a persisted reference image
  *   POST /reveal            -> open the output folder
+ *   POST /poster            -> save a size-chart PNG into a chosen folder
  *
  * Every failure is answered as `{ ok: false, code, error }`: `code` is a stable
  * lowercase kebab-case identifier for the client, `error` is the human-readable
@@ -51,6 +52,9 @@ const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp'])
 // On top of the body limit, reference images are bounded per image (12MB) and per
 // request (64MB), so hitting a route directly cannot bypass what the page checks.
 const JSON_BODY_LIMIT = 2 * 1024 * 1024
+// Size-chart poster upload: 32MB of base64 text carries at most 24MB of PNG.
+const POSTER_BODY_LIMIT = 32 * 1024 * 1024
+const MAX_POSTER_BYTES = Math.floor((POSTER_BODY_LIMIT * 3) / 4)
 const REFERENCE_MAX_BYTES = 12 * 1024 * 1024
 const REFERENCE_MAX_TOTAL_BYTES = 64 * 1024 * 1024
 const BASE64_EXPANSION = 4 / 3
@@ -2710,6 +2714,56 @@ function createHandlers(ctx) {
       sendJson(res, 200, { ok: true, ...(await listHistory(settings, Number.isFinite(limit) ? limit : 60)) })
     },
 
+    /** Saves a rendered size-chart PNG into a folder the user picked. The folder
+     *  must already exist; nothing outside it is touched, and the file name is
+     *  reduced to a safe basename (the client only ever sends `size-chart-*.png`). */
+    async savePoster(req, res) {
+      if (!methodAllowed(req, res, ['POST'])) return
+      const body = await readJsonBody(req, { limit: POSTER_BODY_LIMIT })
+      const dir = typeof body.dir === 'string' ? body.dir.trim() : ''
+      if (!dir) return sendError(res, 400, 'missing-dir', '缺少保存目录')
+      const targetDir = path.resolve(dir)
+      let stats
+      try {
+        stats = await fs.stat(targetDir)
+      } catch {
+        return sendError(res, 404, 'dir-not-found', `目录不存在：${targetDir}`)
+      }
+      if (!stats.isDirectory()) return sendError(res, 404, 'dir-not-found', `不是目录：${targetDir}`)
+      const base64 = typeof body.dataBase64 === 'string' ? body.dataBase64.trim() : ''
+      if (!base64) return sendError(res, 400, 'missing-image', '海报内容为空')
+      const buffer = Buffer.from(base64, 'base64')
+      if (buffer.length === 0) return sendError(res, 400, 'missing-image', '海报内容为空')
+      // base64 inflates 4:3, so the text limit already caps the decoded bytes at
+      // MAX_POSTER_BYTES; this check trips at that exact ceiling (and stays the
+      // real guard if POSTER_BODY_LIMIT is ever raised).
+      if (buffer.length >= MAX_POSTER_BYTES) {
+        return sendError(
+          res,
+          413,
+          'body-too-large',
+          `海报过大（上限 ${formatMegabytes(MAX_POSTER_BYTES)}，请求体上限 ${formatMegabytes(POSTER_BODY_LIMIT)}）`,
+        )
+      }
+      if (detectImageMediaType(buffer) !== 'image/png') {
+        return sendError(res, 400, 'invalid-reference', '海报不是有效的 PNG')
+      }
+      const requested = path.basename(typeof body.name === 'string' ? body.name : '')
+      const safe = /^[A-Za-z0-9._-]{1,80}\.png$/i.test(requested) ? requested : 'size-chart.png'
+      const stem = safe.replace(/\.png$/i, '')
+      let finalName = safe
+      for (let index = 1; index < 1000; index += 1) {
+        try {
+          await fs.access(path.join(targetDir, finalName))
+          finalName = `${stem}-${index}.png`
+        } catch {
+          break
+        }
+      }
+      await writeFileAtomic(path.join(targetDir, finalName), buffer)
+      sendJson(res, 200, { ok: true, path: path.join(targetDir, finalName), dir: targetDir })
+    },
+
     async reveal(req, res) {
       if (!methodAllowed(req, res, ['POST'])) return
       const settings = await readSettings()
@@ -2937,6 +2991,7 @@ export function apply(ctx) {
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref/products`, handler: wrap(handlers.refProducts) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref-image`, handler: wrap(serveRefImage) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/reveal`, handler: wrap(handlers.reveal) }),
+      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/poster`, handler: wrap(handlers.savePoster) }),
     ]
     return () => {
       for (const dispose of disposers.reverse()) {

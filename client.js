@@ -35,6 +35,9 @@ window.__ModuleLoader__.load({
     // 参考 docs/audit-2026-10-20.md 的 A-09。
     const LS_SIZETABLE = 'pbw.sizetable.v1'
     const LS_SIZEPOSTER = 'pbw.sizeposter.v1'
+    // Folder the size-chart PNG is written to; empty means "use the browser
+    // download" (the previous behaviour).
+    const LS_POSTER_DIR = 'pbw.posterdir.v1'
 
     // A job that never settles would hold one of the MAX_CONCURRENT_JOBS slots
     // forever, so a client watchdog closes it after this long. It is far longer
@@ -94,6 +97,11 @@ window.__ModuleLoader__.load({
         sizeNotesTitle: '说明',
         sizeNotesBody: '建议身高 / 体重由原尺码表的围度数据推算，仅供参考；生成的海报可直接用于商品详情页。',
         sizeDownloaded: '图片已开始下载',
+        sizeSaveDir: '保存目录',
+        sizeSaveDirHint: '选择后「下载 PNG」会直接保存到该目录；不选则用浏览器默认下载',
+        sizeSaveDirClear: '恢复默认下载',
+        sizeSavedTo: '已保存到',
+        sizeSaveFailed: '保存失败：',
         morning: '早上好',
         afternoon: '下午好',
         evening: '晚上好',
@@ -203,6 +211,23 @@ window.__ModuleLoader__.load({
         poseDeleteConfirm: '确认删除？',
         poseSelected: '当前选中',
         poseSaved: '已保存',
+        poseGroupFront: '正面',
+        poseGroupSide: '侧面',
+        poseGroupBack: '背面',
+        poseOrient: '朝向分组',
+        poseOrientationHint: '分组只影响生图页「姿态」的排列，不改变动作内容',
+        poseNew: '＋ 新建动作',
+        poseImport: '导入',
+        poseExport: '导出',
+        poseIOPortHint: '导入 / 导出一个 JSON 文件，可在其它电脑上复用动作；重复的动作会自动跳过。',
+        poseExported: '已导出动作',
+        poseExportEmpty: '动作库还是空的，没有可导出的内容',
+        poseExportFailed: '导出失败：浏览器阻止了下载，请重试',
+        poseImportDone: '已导入动作',
+        poseImportSkipped: '，已跳过重复或无效：',
+        poseImportInvalid: '文件不是有效的动作 JSON，请检查后重试',
+        poseImportEmpty: '这个文件里没有可导入的动作',
+        poseImportAllDup: '文件里的动作都已存在，没有新增',
         fShow: '模特展示',
         showHint: '选择后会以 JSON 构图约束覆盖提示词开头的构图段（只写入一次，不与中文提示词拼接）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
         fExtraPrompt: '自定义提示词（光线 / 风格等）',
@@ -375,6 +400,8 @@ window.__ModuleLoader__.load({
         errPromptTooLong: '提示词太长：请精简商品描述或提示词后重试（上限见设置）。',
         errOpenFailed: '无法打开输出目录：请检查该目录是否还存在，或直接手动打开。',
         errDirNotFound: '输出目录不存在或不是文件夹：请到「设置」里重新选择，或新建该目录。',
+        errMissingDir: '没有指定保存目录：请先在「保存目录」里选择一个文件夹。',
+        errMissingImage: '海报内容为空：请等预览生成后重试。',
         errRefOutsideDir: '参考图不在允许的参考图目录里：请重新上传这张图。',
         queueDuplicate: '同样的任务已在排队或生成中，请等它完成。',
         queueRetry: '重试',
@@ -420,6 +447,11 @@ window.__ModuleLoader__.load({
         sizeNotesTitle: 'Notes',
         sizeNotesBody: 'Suggested height/weight are estimated from the original chart measurements and are for reference only. The poster is ready for a product page.',
         sizeDownloaded: 'Download started',
+        sizeSaveDir: 'Save folder',
+        sizeSaveDirHint: 'When set, “Download PNG” writes straight into this folder; leave it empty to use the browser download',
+        sizeSaveDirClear: 'Use browser download',
+        sizeSavedTo: 'Saved to',
+        sizeSaveFailed: 'Could not save:',
         morning: 'Good morning',
         afternoon: 'Good afternoon',
         evening: 'Good evening',
@@ -529,6 +561,23 @@ window.__ModuleLoader__.load({
         poseDeleteConfirm: 'Confirm delete?',
         poseSelected: 'Selected',
         poseSaved: 'Saved',
+        poseGroupFront: 'Front',
+        poseGroupSide: 'Side',
+        poseGroupBack: 'Back',
+        poseOrient: 'Orientation',
+        poseOrientationHint: 'The group only changes how poses are listed in the studio; the action itself is unchanged',
+        poseNew: '+ New action',
+        poseImport: 'Import',
+        poseExport: 'Export',
+        poseIOPortHint: 'Import or export actions as one JSON file so they can be reused on another machine; duplicates are skipped automatically.',
+        poseExported: 'Actions exported',
+        poseExportEmpty: 'The action library is empty; nothing to export',
+        poseExportFailed: 'Export failed: the browser blocked the download, try again',
+        poseImportDone: 'Actions imported',
+        poseImportSkipped: '; skipped duplicates or invalid entries: ',
+        poseImportInvalid: 'That file is not a valid actions JSON; check it and try again',
+        poseImportEmpty: 'No actions in that file',
+        poseImportAllDup: 'Every action in the file already exists',
         fShow: 'Model framing',
         showHint: 'The selected framing replaces the composition segment at the start of the prompt with a single JSON block (never spliced into the text). The model may still drift slightly.',
         fExtraPrompt: 'Custom prompt (lighting / style)',
@@ -701,6 +750,8 @@ window.__ModuleLoader__.load({
         errPromptTooLong: 'The prompt is too long: shorten the product description or the prompt and try again.',
         errOpenFailed: 'The output folder could not be opened: check that it still exists, or open it yourself.',
         errDirNotFound: 'The output folder is missing or not a folder: pick another one in Settings, or create it.',
+        errMissingDir: 'No save folder selected: choose one under “Save folder” first.',
+        errMissingImage: 'The poster is empty: wait for the preview and try again.',
         errRefOutsideDir: 'That reference file is outside the allowed reference folder: upload it again.',
         queueDuplicate: 'The same job is already queued or running — wait for it to finish.',
         queueRetry: 'Retry',
@@ -1317,11 +1368,73 @@ window.__ModuleLoader__.load({
     }
 
     /** Persisted collections are filtered so a bad entry cannot break rendering. */
+    // ------------------------------------------------------------ pose groups
+    // Custom actions carry an orientation so the studio can list them under
+    // 正面 / 侧面 / 背面. Entries saved before this field existed have it guessed
+    // from the name + description; the guess is stored on the next save.
+    const POSE_ORIENTATIONS = ['front', 'side', 'back']
+    const POSE_ORIENTATION_ALIASES = {
+      front: 'front', 正面: 'front', 正: 'front', frontview: 'front', facingcamera: 'front',
+      side: 'side', 侧面: 'side', 侧: 'side', sideview: 'side', profile: 'side', threequarter: 'side',
+      back: 'back', 背面: 'back', 背: 'back', backview: 'back', rear: 'back',
+    }
+    // Unambiguous back-facing wording wins first (「背部正对镜头」 mentions 正对 but is
+    // a back view), then front, then side, so "正面微侧身" is front and not side.
+    // 背后 alone is not enough: a description may say "正面站立，背后是海景", so it
+    // only counts together with a viewing cue (看/拍/镜头/机位/观众/视角).
+    const POSE_ORIENTATION_TESTS = [
+      [
+        'back',
+        /背(对|向)|背影|背(面|部)?正对|背部朝|背面朝|背后(看|拍|的?镜|机位|观众)|背(面|后)(有|的)?(视角|机位|观众|镜头)|后方(有|的)?(视角|机位|观众)|from the back|rear view|back view/i,
+      ],
+      ['front', /正面|正身|正对镜头|面向镜头|front view|facing (the )?camera/i],
+      ['side', /侧面|侧身|侧对|侧向|three[- ]?quarter|side view|profile/i],
+    ]
+    // The name is the stronger signal (a description may mention 背部 as a body
+    // part), so a bare 背面/侧身 in the name is enough there.
+    const POSE_NAME_TESTS = [
+      ['front', /正(面|身)|正对|front/i],
+      ['back', /背(面|部|后)|背对|背向|背影|back/i],
+      ['side', /侧(面|身|对|向)|side|profile/i],
+    ]
+
+    function guessPoseOrientation(text, tests) {
+      const source = String(text || '')
+      if (!source) return ''
+      for (const [id, pattern] of tests) {
+        if (pattern.test(source)) return id
+      }
+      return ''
+    }
+
+    function poseOrientationOf(value) {
+      const raw = String((value && value.orientation) || '')
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '')
+      if (raw && POSE_ORIENTATION_ALIASES[raw]) return POSE_ORIENTATION_ALIASES[raw]
+      return guessPoseOrientation(value && value.name, POSE_NAME_TESTS)
+        || guessPoseOrientation(value && value.prompt, POSE_ORIENTATION_TESTS)
+        || 'front'
+    }
+
+    function groupPoses(poses) {
+      const byId = new Map(POSE_ORIENTATIONS.map(id => [id, []]))
+      for (const item of poses || []) {
+        const bucket = byId.get(poseOrientationOf(item))
+        if (bucket) bucket.push(item)
+      }
+      return POSE_ORIENTATIONS
+        .map(id => ({ id, items: byId.get(id) || [] }))
+        .filter(group => group.items.length > 0)
+    }
+
     function loadPoses() {
       const value = loadJson(LS_POSES, [])
-      return (Array.isArray(value) ? value : []).filter(item => (
-        item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.prompt === 'string'
-      ))
+      return (Array.isArray(value) ? value : [])
+        .filter(item => (
+          item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.prompt === 'string'
+        ))
+        .map(item => ({ ...item, orientation: poseOrientationOf(item) }))
     }
 
     function loadTemplates() {
@@ -1481,6 +1594,93 @@ window.__ModuleLoader__.load({
         reader.onerror = () => reject(reader.error || new Error('read failed'))
         reader.readAsText(blob)
       })
+    }
+
+    // ----------------------------------------------------- pose import/export
+    // Actions travel as one JSON file, mirroring the prompt library. Ids never
+    // leave the machine; an action is identified by orientation + name + text.
+    const POSE_EXPORT_FORMAT = 'personal-workbench.pose-library'
+    const POSE_EXPORT_VERSION = 1
+
+    function poseEntryText(item) {
+      if (!item) return ''
+      const value = item.prompt !== undefined ? item.prompt : (item.text !== undefined ? item.text : item.content)
+      return typeof value === 'string' ? value.trim() : ''
+    }
+
+    function poseEntryName(item, text) {
+      const name = item && typeof item.name === 'string' ? item.name.trim() : ''
+      return name || String(text || '').slice(0, 16)
+    }
+
+    // Dedupe key must derive the name exactly like `parsePoseImport` does, or a
+    // nameless stored action would be imported a second time.
+    function poseImportKey(item) {
+      const text = poseEntryText(item)
+      return `${poseOrientationOf(item)}\u0000${poseEntryName(item, text).slice(0, 80)}\u0000${text}`
+    }
+
+    function buildPoseExport(poses) {
+      return {
+        app: POSE_EXPORT_FORMAT,
+        version: POSE_EXPORT_VERSION,
+        exportedAt: new Date().toISOString(),
+        count: (poses || []).length,
+        poses: (poses || []).map(item => ({
+          name: item.name,
+          orientation: poseOrientationOf(item),
+          prompt: item.prompt,
+        })),
+      }
+    }
+
+    function poseImportList(raw) {
+      if (Array.isArray(raw)) return raw
+      if (!raw || typeof raw !== 'object') return null
+      for (const key of ['poses', 'actions', 'items', 'entries', 'data']) {
+        if (Array.isArray(raw[key])) return raw[key]
+      }
+      return null
+    }
+
+    function parsePoseImport(raw, existing) {
+      const list = poseImportList(raw)
+      // `null` means "this is not a pose file at all"; an empty array is a valid
+      // file that happens to hold no actions.
+      if (!list) return { ok: false, entries: [], duplicates: 0, invalid: 0 }
+      const seen = new Set((existing || []).map(poseImportKey))
+      const stamp = Date.now().toString(36)
+      const entries = []
+      let duplicates = 0
+      let invalid = 0
+      for (const item of list) {
+        const text = poseEntryText(item)
+        if (!text || text.length > 4000) {
+          invalid += 1
+          continue
+        }
+        const name = poseEntryName(item, text).slice(0, 80)
+        const orientation = poseOrientationOf(item)
+        const key = `${orientation}\u0000${name}\u0000${text}`
+        if (seen.has(key)) {
+          duplicates += 1
+          continue
+        }
+        seen.add(key)
+        entries.push({
+          id: `pose-${stamp}${entries.length}${Math.random().toString(36).slice(2, 5)}`,
+          name,
+          prompt: text,
+          orientation,
+        })
+      }
+      return { ok: true, entries, duplicates, invalid }
+    }
+
+    function poseExportFilename(now) {
+      const date = new Date(now || Date.now())
+      const pad = value => String(value).padStart(2, '0')
+      return `poses-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.json`
     }
 
     function settingsToDraft(value) {
@@ -1827,6 +2027,8 @@ window.__ModuleLoader__.load({
       openfailed: 'errOpenFailed',
       dirnotfound: 'errDirNotFound',
       refoutsidedir: 'errRefOutsideDir',
+      missingdir: 'errMissingDir',
+      missingimage: 'errMissingImage',
       hostunreachable: 'errHostUnreachable',
       unreachable: 'errHostUnreachable',
       network: 'errHostUnreachable',
@@ -2545,6 +2747,7 @@ window.__ModuleLoader__.load({
       const t = useCallback(key => (STR[lang] && STR[lang][key]) || (STR.zh[key] || key), [lang])
       const [tab, setTab] = useState('home')
       const [posePage, setPosePage] = useState(false)
+      const [poseNew, setPoseNew] = useState(false)
       const [templatePage, setTemplatePage] = useState(false)
       const [settings, setSettings] = useState(null)
       const [history, setHistory] = useState({ items: [], total: 0, outputDir: '' })
@@ -3019,6 +3222,30 @@ window.__ModuleLoader__.load({
         persistPoses(customPoses.filter(item => item.id !== id))
         if (form.pose === id) update({ pose: '' })
       }, [customPoses, form.pose, persistPoses, update])
+
+      const openPoseLibrary = useCallback(startNew => {
+        setPoseNew(startNew === true)
+        setPosePage(true)
+      }, [])
+
+      const importPoses = useCallback(entries => {
+        const valid = (Array.isArray(entries) ? entries : []).filter(item => (
+          item && typeof item.id === 'string' && typeof item.prompt === 'string' && item.prompt.trim()
+        ))
+        if (!valid.length) return 0
+        persistPoses([...customPoses, ...valid.map(item => ({
+          ...item,
+          name: String(item.name || '').trim() || item.prompt.trim().slice(0, 16),
+          prompt: item.prompt.trim(),
+          orientation: poseOrientationOf(item),
+        }))])
+        setNotice({ kind: 'ok', text: `${t('poseImportDone')} ${valid.length}` })
+        return valid.length
+      }, [customPoses, persistPoses, t])
+
+      const reportPoseExport = useCallback(count => {
+        setNotice({ kind: 'ok', text: `${t('poseExported')} ${count}` })
+      }, [t])
 
       // Persist the whole product-photo set through a promise chain: two quick
       // upload/remove actions must land on the host in the order they happened,
@@ -3656,6 +3883,9 @@ window.__ModuleLoader__.load({
             onDeletePose: deleteCustomPose,
             onBack: () => setPosePage(false),
             selectedPose: form.pose,
+            onImport: importPoses,
+            onExport: reportPoseExport,
+            startNew: poseNew,
           })
         } else if (templatePage) {
           body = h(TemplateLibrary, {
@@ -3699,7 +3929,7 @@ window.__ModuleLoader__.load({
             onRemoveProduct: handleRemoveProduct,
             onDescriptionChange: handleDescriptionChange,
             customPoses,
-            onOpenPoseLibrary: () => setPosePage(true),
+            onOpenPoseLibrary: () => openPoseLibrary(true),
             extracting,
             onExtractDescription: handleExtractDescription,
             templates,
@@ -4001,6 +4231,11 @@ window.__ModuleLoader__.load({
       const [logo, setLogo] = useState(null)
       const [logoImage, setLogoImage] = useState(null)
       const [notice, setNotice] = useState(null)
+      const [posterDir, setPosterDir] = useState(() => {
+        const saved = loadJson(LS_POSTER_DIR, {})
+        return saved && typeof saved.dir === 'string' ? saved.dir : ''
+      })
+      const [savingPoster, setSavingPoster] = useState(false)
       const canvasRef = useRef(null)
 
       const weightUnitLabel = weightUnit === 'jin' ? '斤' : 'kg'
@@ -4391,20 +4626,58 @@ window.__ModuleLoader__.load({
         setNotice({ kind: 'ok', text: t('sizeGenerated') })
       }
 
+      const posterFilename = () => {
+        const now = new Date()
+        const pad = value => String(value).padStart(2, '0')
+        return `size-chart-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.png`
+      }
+
+      const downloadToBrowser = blob => {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = posterFilename()
+        link.click()
+        window.setTimeout(() => URL.revokeObjectURL(url), 2000)
+        setNotice({ kind: 'ok', text: t('sizeDownloaded') })
+      }
+
+      const encodePoster = blob => new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const match = /^data:[^;]+;base64,(.*)$/.exec(String(reader.result || ''))
+          if (match) resolve(match[1])
+          else reject(new Error('encode failed'))
+        }
+        reader.onerror = () => reject(reader.error || new Error('encode failed'))
+        reader.readAsDataURL(blob)
+      })
+
       const downloadPoster = () => {
         const canvas = canvasRef.current
         if (!canvas || typeof canvas.toBlob !== 'function') return
-        canvas.toBlob(blob => {
+        const dir = String(posterDir || '').trim()
+        canvas.toBlob(async blob => {
           if (!blob) return
-          const url = URL.createObjectURL(blob)
-          const link = document.createElement('a')
-          const now = new Date()
-          const pad = value => String(value).padStart(2, '0')
-          link.href = url
-          link.download = `size-chart-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.png`
-          link.click()
-          window.setTimeout(() => URL.revokeObjectURL(url), 2000)
-          setNotice({ kind: 'ok', text: t('sizeDownloaded') })
+          // No folder chosen: keep the plain browser download.
+          if (!dir) {
+            downloadToBrowser(blob)
+            return
+          }
+          setSavingPoster(true)
+          try {
+            const dataBase64 = await encodePoster(blob)
+            const json = await api('/poster', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ dir, name: posterFilename(), dataBase64 }),
+            })
+            setNotice({ kind: 'ok', text: `${t('sizeSavedTo')} ${json.path || dir}` })
+          } catch (error) {
+            setNotice({ kind: 'error', text: `${t('sizeSaveFailed')} ${errorText(error, t)}` })
+          } finally {
+            setSavingPoster(false)
+          }
         }, 'image/png')
       }
 
@@ -4593,6 +4866,57 @@ window.__ModuleLoader__.load({
           lang,
           onChange: setWeightUnit,
         }),
+        h(
+          Field,
+          { label: t('sizeSaveDir') },
+          h(
+            'div',
+            { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+            h('input', {
+              value: posterDir,
+              placeholder: t('sizeSaveDirHint'),
+              onChange: event => {
+                const dir = event.target.value
+                setPosterDir(dir)
+                reportSizeStorageFailure(saveJson(LS_POSTER_DIR, { dir }))
+              },
+              style: { ...INPUT_STYLE, flex: '1 1 260px' },
+            }),
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: async () => {
+                  try {
+                    const picked = appCtx && appCtx.uiWorkspace ? await appCtx.uiWorkspace.pickDirectory() : ''
+                    if (picked) {
+                      setPosterDir(picked)
+                      reportSizeStorageFailure(saveJson(LS_POSTER_DIR, { dir: picked }))
+                    }
+                  } catch (error) {
+                    // picker unavailable; editing the text field still works
+                  }
+                },
+                style: ghostButton({ padding: '8px 12px', fontSize: 12.5 }),
+              },
+              t('pick'),
+            ),
+            posterDir
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () => {
+                      setPosterDir('')
+                      reportSizeStorageFailure(saveJson(LS_POSTER_DIR, { dir: '' }))
+                    },
+                    style: ghostButton({ padding: '8px 12px', fontSize: 12.5 }),
+                  },
+                  t('sizeSaveDirClear'),
+                )
+              : null,
+          ),
+        ),
         h(
           'button',
           {
@@ -4941,38 +5265,49 @@ window.__ModuleLoader__.load({
         managePoseButton,
       )
 
+      const poseChip = item => {
+        const active = item.id === form.pose
+        return h(
+          'button',
+          {
+            key: item.id,
+            type: 'button',
+            onClick: () => update({ pose: item.id }),
+            title: item.prompt,
+            style: {
+              padding: '6px 12px',
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: 500,
+              cursor: 'pointer',
+              border: '1px solid transparent',
+              background: active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-bg-layer-2)',
+              color: active ? '#ffffff' : 'var(--dsw-alias-label-primary)',
+              boxShadow: active ? '0 1px 2px rgba(0,0,0,0.12)' : 'none',
+            },
+          },
+          item.name,
+        )
+      }
+
+      // Actions are listed under their orientation so a long library stays
+      // scannable; empty groups are skipped entirely.
       const poseSection = customPoses.length
         ? h(
             'div',
             { style: { marginBottom: 16 } },
             poseLabelRow,
-            h(
-              'div',
-              { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
-              customPoses.map(item => {
-                const active = item.id === form.pose
-                return h(
-                  'button',
-                  {
-                    key: item.id,
-                    type: 'button',
-                    onClick: () => update({ pose: item.id }),
-                    title: item.prompt,
-                    style: {
-                      padding: '6px 12px',
-                      borderRadius: 999,
-                      fontSize: 12.5,
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      border: '1px solid transparent',
-                      background: active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-bg-layer-2)',
-                      color: active ? '#ffffff' : 'var(--dsw-alias-label-primary)',
-                      boxShadow: active ? '0 1px 2px rgba(0,0,0,0.12)' : 'none',
-                    },
-                  },
-                  item.name,
-                )
-              }),
+            groupPoses(customPoses).map(group =>
+              h(
+                'div',
+                { key: group.id, style: { marginBottom: 8 } },
+                h(
+                  'div',
+                  { style: { fontSize: 10.5, color: 'var(--dsw-alias-label-secondary)', marginBottom: 5, letterSpacing: 0.2 } },
+                  t(`poseGroup${group.id === 'front' ? 'Front' : group.id === 'side' ? 'Side' : 'Back'}`),
+                ),
+                h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, group.items.map(poseChip)),
+              ),
             ),
           )
         : h(
@@ -5896,36 +6231,122 @@ window.__ModuleLoader__.load({
     // button opens it; creating, editing and deleting all happen here, while the
     // studio keeps only the selection chips.
     function PoseLibrary(props) {
-      const { t, customPoses, onSavePose, onDeletePose, onBack, selectedPose } = props
-      const [editor, setEditor] = useState({ id: null, name: '', prompt: '' })
+      const { t, customPoses, onSavePose, onDeletePose, onBack, selectedPose, onImport, onExport, startNew } = props
+      // editor === null means "browsing". A new draft and an in-place row edit
+      // share the same shape so both render the same fields.
+      const [editor, setEditor] = useState(() => (
+        startNew ? { mode: 'new', id: null, name: '', prompt: '', orientation: 'front' } : null
+      ))
       const [flash, setFlash] = useState('')
+      const [warning, setWarning] = useState('')
       const [confirmId, setConfirmId] = useState(null)
+      const fileInputRef = useRef(null)
       const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
 
-      const isEditing = Boolean(editor.id)
-      const canSave = Boolean(editor.name.trim() && editor.prompt.trim())
+      const canSave = Boolean(editor && editor.name.trim() && editor.prompt.trim())
+
+      const openNew = () => {
+        setFlash('')
+        setWarning('')
+        setConfirmId(null)
+        setEditor({ mode: 'new', id: null, name: '', prompt: '', orientation: 'front' })
+      }
+
+      const startEdit = item => {
+        setFlash('')
+        setWarning('')
+        setConfirmId(null)
+        setEditor({
+          mode: 'edit',
+          id: item.id,
+          name: item.name,
+          prompt: item.prompt,
+          orientation: poseOrientationOf(item),
+        })
+      }
+
+      const closeEditor = () => {
+        setConfirmId(null)
+        setEditor(null)
+      }
 
       const change = patch => {
         setFlash('')
+        setWarning('')
         setConfirmId(null)
-        setEditor(prev => ({ ...prev, ...patch }))
-      }
-
-      const reset = () => {
-        setFlash('')
-        setConfirmId(null)
-        setEditor({ id: null, name: '', prompt: '' })
+        setEditor(prev => (prev ? { ...prev, ...patch } : prev))
       }
 
       const save = () => {
+        if (!editor) return
         const name = editor.name.trim()
         const prompt = editor.prompt.trim()
         if (!name || !prompt) return
         const id = editor.id || `pose-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
-        onSavePose({ id, name, prompt })
-        setEditor({ id: null, name: '', prompt: '' })
+        onSavePose({ id, name, prompt, orientation: editor.orientation || 'front' })
+        setEditor(null)
         setConfirmId(null)
         setFlash(t('poseSaved'))
+      }
+
+      const exportPoses = () => {
+        setFlash('')
+        setWarning('')
+        if (customPoses.length === 0) {
+          setWarning(t('poseExportEmpty'))
+          return
+        }
+        const payload = buildPoseExport(customPoses)
+        const saved = downloadTextFile(poseExportFilename(), JSON.stringify(payload, null, 2), 'application/json')
+        if (!saved) {
+          setWarning(t('poseExportFailed'))
+          return
+        }
+        if (onExport) onExport(customPoses.length)
+      }
+
+      const chooseImportFile = () => {
+        const input = fileInputRef.current
+        if (!input) return
+        input.value = ''
+        input.click()
+      }
+
+      const importFromFile = async event => {
+        const file = event && event.target && event.target.files ? event.target.files[0] : null
+        setFlash('')
+        setWarning('')
+        if (!file) return
+        try {
+          const raw = typeof file.text === 'function' ? await file.text() : await readBlobAsText(file)
+          let parsed = null
+          try {
+            parsed = JSON.parse(raw)
+          } catch {
+            parsed = null
+          }
+          const result = parsePoseImport(parsed, customPoses)
+          const skipped = result.duplicates + result.invalid
+          // A readable document that simply yields nothing is not a malformed
+          // file, so the "invalid" wording is reserved for unparseable input.
+          if (!result.ok) {
+            setWarning(t('poseImportInvalid'))
+            return
+          }
+          if (!result.entries.length) {
+            if (result.duplicates > 0 && result.invalid === 0) setWarning(t('poseImportAllDup'))
+            else if (skipped > 0) setWarning(`${t('poseImportEmpty')}${t('poseImportSkipped')}${skipped}`)
+            else setWarning(t('poseImportEmpty'))
+            return
+          }
+          if (onImport) onImport(result.entries)
+          setFlash(`${t('poseImportDone')} ${result.entries.length}`)
+          if (skipped > 0) setWarning(`${t('poseImportSkipped')}${skipped}`)
+        } catch (error) {
+          setWarning(t('poseImportInvalid'))
+        } finally {
+          if (event && event.target) event.target.value = ''
+        }
       }
 
       // Two-step inline delete: the first click arms the row, the second one
@@ -5940,87 +6361,176 @@ window.__ModuleLoader__.load({
         confirmWindow.disarm()
         setConfirmId(null)
         onDeletePose(item.id)
-        if (editor.id === item.id) reset()
+        if (editor && editor.id === item.id) setEditor(null)
       }
+
+      const orientationLabel = id =>
+        t(`poseGroup${id === 'front' ? 'Front' : id === 'side' ? 'Side' : 'Back'}`)
+
+      const orientationChips = value =>
+        h(
+          'div',
+          { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+          POSE_ORIENTATIONS.map(id =>
+            h(
+              'button',
+              {
+                key: id,
+                type: 'button',
+                onClick: () => change({ orientation: id }),
+                style: {
+                  padding: '5px 12px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  border: '1px solid ' + (value === id ? 'transparent' : 'var(--dsw-alias-border-l1)'),
+                  background: value === id ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-bg-layer-2)',
+                  color: value === id ? '#ffffff' : 'var(--dsw-alias-label-primary)',
+                },
+              },
+              orientationLabel(id),
+            ),
+          ),
+        )
+
+      // Same fields for a new draft and for an in-place row edit.
+      const editorCard = draft =>
+        h(
+          Card,
+          { style: { borderColor: 'var(--dsw-alias-brand-primary)', marginBottom: 10 } },
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 } },
+            h('div', { style: { fontSize: 13, fontWeight: 650 } }, draft.mode === 'edit' ? t('poseEditTitle') : t('poseAddTitle')),
+            h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } }, t('poseOrientationHint')),
+          ),
+          h(
+            Field,
+            { label: t('poseName') },
+            h('input', {
+              value: draft.name,
+              placeholder: t('poseNamePh'),
+              onChange: event => change({ name: event.target.value }),
+              style: INPUT_STYLE,
+            }),
+          ),
+          h(
+            Field,
+            { label: t('posePrompt') },
+            h('textarea', {
+              value: draft.prompt,
+              placeholder: t('posePromptPh'),
+              onChange: event => change({ prompt: event.target.value }),
+              rows: 3,
+              style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
+            }),
+          ),
+          h(Field, { label: t('poseOrient') }, orientationChips(draft.orientation)),
+          h(
+            'div',
+            { style: { display: 'flex', gap: 8, marginTop: 4 } },
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: save,
+                disabled: !canSave,
+                style: {
+                  ...PRIMARY_BUTTON,
+                  padding: '7px 16px',
+                  fontSize: 12.5,
+                  opacity: canSave ? 1 : 0.55,
+                  cursor: canSave ? 'pointer' : 'not-allowed',
+                },
+              },
+              t('poseSave'),
+            ),
+            h('button', { type: 'button', onClick: closeEditor, style: ghostButton({ padding: '7px 14px', fontSize: 12.5 }) }, t('cancel')),
+          ),
+        )
+
+      const rowCard = item =>
+        h(
+          Card,
+          { key: item.id, style: { padding: '12px 14px' } },
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 } },
+            h(
+              'div',
+              { style: { flex: 1, minWidth: 0 } },
+              h(
+                'div',
+                { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                h('span', { style: { fontSize: 13.5, fontWeight: 650 } }, item.name),
+                item.id === selectedPose
+                  ? h(
+                      'span',
+                      {
+                        style: {
+                          fontSize: 10.5,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          color: 'var(--dsw-alias-brand-primary)',
+                          background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 13%, transparent)',
+                        },
+                      },
+                      t('poseSelected'),
+                    )
+                  : null,
+              ),
+              h(
+                'div',
+                { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', marginTop: 5, lineHeight: 1.6, wordBreak: 'break-word' } },
+                item.prompt,
+              ),
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', gap: 6, flexShrink: 0 } },
+              h(
+                'button',
+                { type: 'button', onClick: () => startEdit(item), style: ghostButton({ padding: '4px 10px', fontSize: 12 }) },
+                t('poseEdit'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => remove(item),
+                  style: ghostButton({
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    color: 'var(--dsw-alias-state-error-primary)',
+                    borderColor: confirmId === item.id ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-border-l1)',
+                    background: confirmId === item.id ? 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent)' : 'transparent',
+                  }),
+                },
+                confirmId === item.id ? t('poseDeleteConfirm') : t('remove'),
+              ),
+            ),
+          ),
+        )
 
       const list = customPoses.length > 0
         ? h(
             'div',
-            { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-            customPoses.map(item =>
+            null,
+            groupPoses(customPoses).map(group =>
               h(
-                Card,
-                {
-                  key: item.id,
-                  style: {
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    gap: 14,
-                    padding: '12px 14px',
-                    borderColor: item.id === editor.id ? 'var(--dsw-alias-brand-primary)' : undefined,
-                  },
-                },
+                'div',
+                { key: group.id, style: { marginBottom: 14 } },
                 h(
                   'div',
-                  { style: { flex: 1, minWidth: 0 } },
-                  h(
-                    'div',
-                    { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                    h('span', { style: { fontSize: 13.5, fontWeight: 650 } }, item.name),
-                    item.id === selectedPose
-                      ? h(
-                          'span',
-                          {
-                            style: {
-                              fontSize: 10.5,
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              color: 'var(--dsw-alias-brand-primary)',
-                              background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 13%, transparent)',
-                            },
-                          },
-                          t('poseSelected'),
-                        )
-                      : null,
-                  ),
-                  h(
-                    'div',
-                    { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', marginTop: 5, lineHeight: 1.6, wordBreak: 'break-word' } },
-                    item.prompt,
-                  ),
+                  { style: { fontSize: 12.5, fontWeight: 650, margin: '6px 0 8px' } },
+                  `${orientationLabel(group.id)} · ${group.items.length}`,
                 ),
                 h(
                   'div',
-                  { style: { display: 'flex', gap: 6, flexShrink: 0 } },
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      onClick: () => {
-                        setFlash('')
-                        setConfirmId(null)
-                        setEditor({ id: item.id, name: item.name, prompt: item.prompt })
-                      },
-                      style: ghostButton({ padding: '4px 10px', fontSize: 12 }),
-                    },
-                    t('poseEdit'),
-                  ),
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      onClick: () => remove(item),
-                      style: ghostButton({
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        color: 'var(--dsw-alias-state-error-primary)',
-                        borderColor: confirmId === item.id ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-border-l1)',
-                        background: confirmId === item.id ? 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent)' : 'transparent',
-                      }),
-                    },
-                    confirmId === item.id ? t('poseDeleteConfirm') : t('remove'),
-                  ),
+                  { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                  group.items.map(item => (
+                    editor && editor.mode === 'edit' && editor.id === item.id ? editorCard(editor) : rowCard(item)
+                  )),
                 ),
               ),
             ),
@@ -6036,70 +6546,34 @@ window.__ModuleLoader__.load({
         { style: { maxWidth: 820, margin: '0 auto' } },
         h(
           'div',
-          { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, marginBottom: 4, flexWrap: 'wrap' } },
+          { style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 4, flexWrap: 'wrap' } },
           h('button', { type: 'button', onClick: onBack, style: ghostButton({ padding: '6px 12px', fontSize: 12.5 }) }, t('poseBack')),
           h('div', { style: { fontSize: 16, fontWeight: 680 } }, t('posePageTitle')),
+          h('div', { style: { flex: 1 } }),
+          h('button', { type: 'button', onClick: chooseImportFile, style: ghostButton({ padding: '6px 12px', fontSize: 12.5 }) }, t('poseImport')),
+          h('button', { type: 'button', onClick: exportPoses, style: ghostButton({ padding: '6px 12px', fontSize: 12.5 }) }, t('poseExport')),
+          h('button', { type: 'button', onClick: openNew, style: tintButton() }, t('poseNew')),
+          h('input', {
+            ref: fileInputRef,
+            type: 'file',
+            accept: 'application/json,.json',
+            onChange: importFromFile,
+            style: { display: 'none' },
+          }),
         ),
         h(
           'div',
-          { style: { fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 14px', lineHeight: 1.65 } },
+          { style: { fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 10px', lineHeight: 1.65 } },
           t('posePageHint'),
         ),
         h(
-          Card,
-          { style: { marginBottom: 16 } },
-          h(
-            'div',
-            { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 } },
-            h('div', { style: { fontSize: 13, fontWeight: 650 } }, isEditing ? t('poseEditTitle') : t('poseAddTitle')),
-            flash ? h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-state-success-primary)' } }, flash) : null,
-          ),
-          h(
-            Field,
-            { label: t('poseName') },
-            h('input', {
-              value: editor.name,
-              placeholder: t('poseNamePh'),
-              onChange: event => change({ name: event.target.value }),
-              style: INPUT_STYLE,
-            }),
-          ),
-          h(
-            Field,
-            { label: t('posePrompt') },
-            h('textarea', {
-              value: editor.prompt,
-              placeholder: t('posePromptPh'),
-              onChange: event => change({ prompt: event.target.value }),
-              rows: 3,
-              style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
-            }),
-          ),
-          h(
-            'div',
-            { style: { display: 'flex', gap: 8 } },
-            h(
-              'button',
-              {
-                type: 'button',
-                onClick: save,
-                disabled: !canSave,
-                style: {
-                  ...PRIMARY_BUTTON,
-                  padding: '7px 16px',
-                  fontSize: 12.5,
-                  opacity: canSave ? 1 : 0.55,
-                  cursor: canSave ? 'pointer' : 'not-allowed',
-                },
-              },
-              `${isEditing ? '' : '＋ '}${t('poseSave')}`,
-            ),
-            isEditing
-              ? h('button', { type: 'button', onClick: reset, style: ghostButton({ padding: '7px 14px', fontSize: 12.5 }) }, t('cancel'))
-              : null,
-          ),
+          'div',
+          { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', marginBottom: 12, lineHeight: 1.6 } },
+          t('poseIOPortHint'),
         ),
-        h(SectionTitle, { title: t('poseListTitle') }),
+        flash ? h('div', { style: { fontSize: 12, color: 'var(--dsw-alias-state-success-primary)', marginBottom: 10 } }, flash) : null,
+        warning ? h('div', { style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)', marginBottom: 10 } }, warning) : null,
+        editor && editor.mode === 'new' ? editorCard(editor) : null,
         list,
       )
     }
