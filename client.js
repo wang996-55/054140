@@ -228,6 +228,10 @@ window.__ModuleLoader__.load({
         poseImportInvalid: '文件不是有效的动作 JSON，请检查后重试',
         poseImportEmpty: '这个文件里没有可导入的动作',
         poseImportAllDup: '文件里的动作都已存在，没有新增',
+        titleAuto: '自动生成标题',
+        titleTitling: '生成中…',
+        titleNeedPrompt: '先填写提示词，再生成标题',
+        titleAutoHint: '标题留空时，保存会自动生成（最长 15 个汉字）',
         fShow: '模特展示',
         showHint: '选择后会以 JSON 构图约束覆盖提示词开头的构图段（只写入一次，不与中文提示词拼接）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
         fExtraPrompt: '自定义提示词（光线 / 风格等）',
@@ -578,6 +582,10 @@ window.__ModuleLoader__.load({
         poseImportInvalid: 'That file is not a valid actions JSON; check it and try again',
         poseImportEmpty: 'No actions in that file',
         poseImportAllDup: 'Every action in the file already exists',
+        titleAuto: 'Auto-generate title',
+        titleTitling: 'Generating…',
+        titleNeedPrompt: 'Write the description first, then generate a title',
+        titleAutoHint: 'Leave the title empty and saving generates one (max 15 characters)',
         fShow: 'Model framing',
         showHint: 'The selected framing replaces the composition segment at the start of the prompt with a single JSON block (never spliced into the text). The model may still drift slightly.',
         fExtraPrompt: 'Custom prompt (lighting / style)',
@@ -1594,6 +1602,79 @@ window.__ModuleLoader__.load({
         reader.onerror = () => reject(reader.error || new Error('read failed'))
         reader.readAsText(blob)
       })
+    }
+
+    // ------------------------------------------------------------- auto titles
+    // A saved action or prompt needs a short title, but typing one is busywork:
+    // the host asks its text model to summarise the description into ≤15 chars.
+    const TITLE_MAX_CHARS = 15
+
+    function clipTitle(value) {
+      let text = String(value || '').replace(/\s+/g, ' ').trim()
+      // Only *wrapping* quote marks are noise from the model; brackets inside a
+      // name such as 【城市街头实景｜详细版】 are meaningful and stay.
+      const pairs = [['「', '」'], ['『', '』'], ['“', '”'], ['‘', '’'], ['"', '"'], ["'", "'"], ['`', '`']]
+      // Quotes and trailing punctuation nest in either order (“标题”。 vs “标题。”),
+      // so both are peeled alternately until the text stops changing. This has to
+      // match the host's `sanitizeTitle`, or the two halves disagree on the result.
+      for (let pass = 0; pass < 3; pass += 1) {
+        const before = text
+        for (const [open, close] of pairs) {
+          if (text.length > 1 && text[0] === open && text[text.length - 1] === close) {
+            text = text.slice(1, -1).trim()
+          }
+        }
+        text = text.replace(/[。，、；：！？.!?;:…]+$/, '').trim()
+        if (text === before) break
+      }
+      return Array.from(text).slice(0, TITLE_MAX_CHARS).join('')
+    }
+
+    /** Offline fallback: the first clause, squeezed into the same 15 characters.
+     *  Mirrors the host's `fallbackTitle`: JSON blocks go entirely, bracket shells
+     *  are removed but their content stays, and a leading metadata label such as
+     *  「构图约束」 is peeled off so it never becomes the title. */
+    function localTitle(text, kind) {
+      let flat = String(text || '')
+      for (let pass = 0; pass < 3 && flat.indexOf('{') >= 0; pass += 1) {
+        const next = flat.replace(/\{[^{}]*\}/g, ' ')
+        if (next === flat) break
+        flat = next
+      }
+      flat = flat
+        .replace(/[{}"[\]]/g, ' ')
+        .replace(/[【】《》（）「」『』]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      let base = flat.split(/[。，、；：！？.!?;:]/)[0] || flat
+      const metadata = /^(构图约束|构图|保真规则|保真|规则|约束|要求|参考图|参考|元数据|标签|占位)/
+      for (let pass = 0; pass < 3 && metadata.test(base); pass += 1) {
+        const next = base.replace(metadata, '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
+        if (!next) {
+          base = ''
+          break
+        }
+        if (next === base) break
+        base = next
+      }
+      return clipTitle(base) || (kind === 'prompt' ? '未命名提示词' : '未命名动作')
+    }
+
+    /** Never throws: a missing title must not block saving, so any failure falls
+     *  back to the local cut instead of surfacing an error. */
+    async function requestTitle(text, kind) {
+      const source = String(text || '').trim()
+      if (!source) return ''
+      try {
+        const json = await api('/title', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: source, kind: kind === 'prompt' ? 'prompt' : 'pose' }),
+        })
+        return clipTitle(json && json.title) || localTitle(source, kind)
+      } catch {
+        return localTitle(source, kind)
+      }
     }
 
     // ----------------------------------------------------- pose import/export
@@ -5709,7 +5790,25 @@ window.__ModuleLoader__.load({
       const editor = draft || null
       const [confirmId, setConfirmId] = useState(null)
       const [warning, setWarning] = useState('')
+      const [titling, setTitling] = useState(false)
       const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
+
+      const autoTitle = async () => {
+        if (!editor) return
+        const text = String(editor.text || '').trim()
+        if (!text) {
+          setWarning(t('titleNeedPrompt'))
+          return
+        }
+        setTitling(true)
+        setWarning('')
+        try {
+          const title = await requestTitle(text, 'prompt')
+          setDraft(prev => ({ ...(prev || {}), name: title }))
+        } finally {
+          setTitling(false)
+        }
+      }
 
       const kinds = [
         { id: 'style', labelKey: 'promptKindStyle' },
@@ -5749,7 +5848,7 @@ window.__ModuleLoader__.load({
         })
       }
       const changeEditor = patch => setDraft(prev => ({ ...(prev || {}), ...patch }))
-      const saveEditor = () => {
+      const saveEditor = async () => {
         if (!editor) return
         const text = String(editor.text || '').trim()
         if (!text) return
@@ -5763,7 +5862,17 @@ window.__ModuleLoader__.load({
           setWarning(t('promptDupBlocked'))
           return
         }
-        const name = String(editor.name || '').trim() || text.slice(0, 16)
+        // An empty title is generated from the text, so saving never needs typing.
+        let name = String(editor.name || '').trim()
+        if (!name) {
+          setTitling(true)
+          try {
+            name = await requestTitle(text, 'prompt')
+          } finally {
+            setTitling(false)
+          }
+        }
+        name = clipTitle(name) || localTitle(text, 'prompt')
         setWarning('')
         if (editor.id) onUpdate(editor.id, { kind, name, text })
         else onSave(kind, name, text)
@@ -5829,13 +5938,33 @@ window.__ModuleLoader__.load({
       const editorFields = () => [
         h(
           Field,
-          { key: 'name', label: t('promptNameLabel') },
-          h('input', {
-            value: editor.name,
-            placeholder: t('promptNamePh'),
-            onChange: event => changeEditor({ name: event.target.value }),
-            style: INPUT_STYLE,
-          }),
+          { key: 'name', label: t('promptNameLabel'), hint: t('titleAutoHint') },
+          h(
+            'div',
+            { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+            h('input', {
+              value: editor.name,
+              placeholder: t('promptNamePh'),
+              maxLength: TITLE_MAX_CHARS,
+              onChange: event => changeEditor({ name: event.target.value }),
+              style: { ...INPUT_STYLE, flex: '1 1 200px' },
+            }),
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: autoTitle,
+                disabled: titling || !String(editor.text || '').trim(),
+                style: ghostButton({
+                  padding: '8px 12px',
+                  fontSize: 12.5,
+                  opacity: titling || !String(editor.text || '').trim() ? 0.55 : 1,
+                  cursor: titling || !String(editor.text || '').trim() ? 'not-allowed' : 'pointer',
+                }),
+              },
+              titling ? t('titleTitling') : t('titleAuto'),
+            ),
+          ),
         ),
         h(
           Field,
@@ -6240,10 +6369,29 @@ window.__ModuleLoader__.load({
       const [flash, setFlash] = useState('')
       const [warning, setWarning] = useState('')
       const [confirmId, setConfirmId] = useState(null)
+      const [titling, setTitling] = useState(false)
       const fileInputRef = useRef(null)
       const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
 
-      const canSave = Boolean(editor && editor.name.trim() && editor.prompt.trim())
+      // Only the description is required: an empty title is generated on save.
+      const canSave = Boolean(editor && editor.prompt.trim()) && !titling
+
+      const autoTitle = async () => {
+        if (!editor) return
+        const prompt = editor.prompt.trim()
+        if (!prompt) {
+          setWarning(t('titleNeedPrompt'))
+          return
+        }
+        setTitling(true)
+        setWarning('')
+        try {
+          const title = await requestTitle(prompt, 'pose')
+          setEditor(prev => (prev ? { ...prev, name: title } : prev))
+        } finally {
+          setTitling(false)
+        }
+      }
 
       const openNew = () => {
         setFlash('')
@@ -6277,11 +6425,21 @@ window.__ModuleLoader__.load({
         setEditor(prev => (prev ? { ...prev, ...patch } : prev))
       }
 
-      const save = () => {
+      const save = async () => {
         if (!editor) return
-        const name = editor.name.trim()
         const prompt = editor.prompt.trim()
-        if (!name || !prompt) return
+        if (!prompt) return
+        let name = editor.name.trim()
+        if (!name) {
+          setTitling(true)
+          try {
+            name = await requestTitle(prompt, 'pose')
+          } finally {
+            setTitling(false)
+          }
+        }
+        name = clipTitle(name) || localTitle(prompt, 'pose')
+        if (!name) return
         const id = editor.id || `pose-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
         onSavePose({ id, name, prompt, orientation: editor.orientation || 'front' })
         setEditor(null)
@@ -6406,13 +6564,33 @@ window.__ModuleLoader__.load({
           ),
           h(
             Field,
-            { label: t('poseName') },
-            h('input', {
-              value: draft.name,
-              placeholder: t('poseNamePh'),
-              onChange: event => change({ name: event.target.value }),
-              style: INPUT_STYLE,
-            }),
+            { label: t('poseName'), hint: t('titleAutoHint') },
+            h(
+              'div',
+              { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+              h('input', {
+                value: draft.name,
+                placeholder: t('poseNamePh'),
+                maxLength: TITLE_MAX_CHARS,
+                onChange: event => change({ name: event.target.value }),
+                style: { ...INPUT_STYLE, flex: '1 1 200px' },
+              }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: autoTitle,
+                  disabled: titling || !String(draft.prompt || '').trim(),
+                  style: ghostButton({
+                    padding: '8px 12px',
+                    fontSize: 12.5,
+                    opacity: titling || !String(draft.prompt || '').trim() ? 0.55 : 1,
+                    cursor: titling || !String(draft.prompt || '').trim() ? 'not-allowed' : 'pointer',
+                  }),
+                },
+                titling ? t('titleTitling') : t('titleAuto'),
+              ),
+            ),
           ),
           h(
             Field,

@@ -22,6 +22,7 @@
  *   GET  /ref-image         -> serve a persisted reference image
  *   POST /reveal            -> open the output folder
  *   POST /poster            -> save a size-chart PNG into a chosen folder
+ *   POST /title             -> auto-generate a ≤15-char Chinese title from a description
  *
  * Every failure is answered as `{ ok: false, code, error }`: `code` is a stable
  * lowercase kebab-case identifier for the client, `error` is the human-readable
@@ -64,6 +65,10 @@ const EXTRACT_SIZE_REF_LIMIT = 2
 // A prompt is counted in code points, so an emoji or any other surrogate pair
 // counts once instead of twice. Well past any prompt the page builds (~4k).
 const PROMPT_MAX_CHARS = 20000
+// Auto titles have to fit one button in the page, so they are capped at 15
+// characters; the description they are derived from is capped separately.
+const TITLE_MAX_CHARS = 15
+const TITLE_TEXT_MAX_CHARS = 4000
 // Upstream SSE guards: one un-terminated event block, and the whole response.
 // The block cap must stay above the largest *legitimate* single event: a gateway
 // that returns the finished image in one `completed` event sends the whole
@@ -2476,6 +2481,195 @@ function resolveProbeCredentials(settings, body) {
   return { base, apiKey: apiKey.trim(), savedProfile, baseDiffers }
 }
 
+// ---------------------------------------------------------------- auto titles
+// The action list and the prompt library show one-line labels, but what the user
+// types is a full description ("背对镜头站立，双腿自然岔开，重心在右腿"). A text
+// model turns that into a ≤15-character Chinese title. A title is a convenience,
+// never a prerequisite: when the model is missing or fails, the route still
+// answers 200 with a locally derived title so saving is never blocked.
+const TITLE_SYSTEM = '你是一个只输出 JSON 的标题生成器：{ "title": "≤15个汉字的中文短标题" }。描述里可能夹带 JSON 片段或括号标记，请直接忽略这些符号，只根据文字部分概括标题。不要输出任何解释、前后缀或代码块。'
+// A title is a label, never a conversation: when the model answers with chat
+// ("看起来你的消息里有占位符…" / "这是一段很适合用于AI绘画的描述…") that answer must
+// never become the saved title.
+const TITLE_CHATTY_PATTERN = /占位符|你的消息|无法(生成|完成)|抱歉|sorry|cannot|i can'?t|描述|画面|适合|建议|为您|以下是|^(这|那|该|此|它)/i
+
+/** The prompt asks for `{"title":"…"}`; models still add prose around it, so the
+ *  object is located inside the answer instead of assuming it is the whole text. */
+function parseTitleAnswer(raw) {
+  const text = String(raw === null || raw === undefined ? '' : raw)
+  const block = /\{[\s\S]*?\}/.exec(text)
+  if (block) {
+    try {
+      const parsed = JSON.parse(block[0])
+      const value = parsed && (parsed.title || parsed.name || parsed.t)
+      if (typeof value === 'string') {
+        const title = sanitizeTitle(value)
+        if (title) return title
+      }
+    } catch {
+      // fall through to the loose patterns below
+    }
+  }
+  const inline = /"title"\s*:\s*"([^"]{1,80})"/.exec(text)
+  if (inline) return sanitizeTitle(inline[1])
+  const labelled = /(?:标题|title)\s*[:：]\s*(.+)/i.exec(text)
+  if (labelled) {
+    const title = sanitizeTitle(labelled[1])
+    if (title) return title
+  }
+  return ''
+}
+
+/** Normalise one title: single line, no wrapping quotes/brackets, no trailing
+ *  punctuation, at most TITLE_MAX_CHARS characters. */
+function sanitizeTitle(raw) {
+  let text = String(raw === null || raw === undefined ? '' : raw)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  // Models wrap the answer in quotes or brackets even when told not to, and the
+  // final punctuation can sit either inside or outside that wrapper
+  // ('「标题。」' vs '「标题」。'), so peel wrappers and punctuation until stable.
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = text
+    text = text
+      .replace(/^["'`「」『』《》【】（）()\s]+/, '')
+      .replace(/["'`「」『』《》【】（）()\s]+$/, '')
+      .replace(/[。，、；：！？.!?;:…]+$/g, '')
+      .trim()
+    if (text === before) break
+  }
+  return Array.from(text).slice(0, TITLE_MAX_CHARS).join('').trim()
+}
+
+/** Local title used when the model is unavailable. Strips JSON noise, keeps the
+ *  first readable clause, and is never empty so the page always has a label. */
+function fallbackTitle(text, kind) {
+  const cleaned = String(text === null || text === undefined ? '' : text)
+    // `{构图约束}` / `{"fidelity":"x"}` blocks are app metadata, not description
+    // text, so the whole block goes: keeping its content would title the action
+    // "构图约束 背对镜头". Brackets that merely wrap a phrase (【】《》（）「」) are
+    // only unwrapped, because their content is usually the description itself.
+    .replace(/\{[^{}]*\}/g, ' ')
+    .replace(/[{}"[\]]/g, ' ')
+    .replace(/[【】《》（）「」『』]/g, ' ')
+    .replace(/\\[nrt]/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+  const clauses = cleaned
+    .split(/[。，、；：！？.!?;:,]/)
+    .map(part => part.trim())
+    .filter(Boolean)
+  // Prefer a clause that actually reads as Chinese: a JSON fragment such as
+  // {"fidelity":"x"} leaves an ASCII key in front of the description, which makes
+  // a useless label, so that leading noise is dropped.
+  const candidate = clauses.find(part => /[\u4e00-\u9fff]/.test(part))
+  let base = candidate ? candidate.replace(/^[^\u4e00-\u9fff]+/, '') : (clauses[0] || cleaned)
+  // A leading label such as 「构图约束」/「保真规则」/「元数据」 names the block, not the
+  // action, so it is peeled off before the title is cut.
+  const metadata = /^(构图约束|构图|保真规则|保真|规则|约束|要求|参考图|参考|元数据|标签|占位)/
+  for (let pass = 0; pass < 3 && metadata.test(base); pass += 1) {
+    const next = base.replace(metadata, '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
+    if (!next) {
+      base = ''
+      break
+    }
+    if (next === base) break
+    base = next
+  }
+  const title = sanitizeTitle(base)
+  if (title) return title
+  return kind === 'prompt' ? '未命名提示词' : '未命名动作'
+}
+
+/** Prompts from this app often start with a JSON block (composition / fidelity);
+ *  the model reads those braces as an unfilled template, so they are dropped
+ *  before prompting and only the prose is sent. */
+function titleSourceText(text) {
+  let flat = String(text || '')
+  for (let pass = 0; pass < 3 && flat.indexOf('{') >= 0; pass += 1) {
+    const next = flat.replace(/\{[^{}]*\}/g, ' ')
+    if (next === flat) break
+    flat = next
+  }
+  flat = flat.replace(/[{}"[\]]/g, ' ').replace(/\s+/g, ' ').trim()
+  return flat || String(text || '').trim()
+}
+
+/** Title from the harness text model. Throws when the model cannot be used, so
+ *  the caller can answer with `fallbackTitle` instead of failing the request. */
+async function titleFromModel(ctx, text, kind) {
+  const llm = ctx.get ? ctx.get('llm') : ctx.llm
+  const defaultModel = ctx.get ? ctx.get('agentDefaultModel') : ctx.agentDefaultModel
+  if (!llm || typeof llm.stream !== 'function') throw new Error('当前 Harness 未提供文本模型')
+  if (!defaultModel || typeof defaultModel.currentSelection !== 'function') {
+    throw new Error('未找到可用的默认模型')
+  }
+  const selection = defaultModel.currentSelection()
+  const provider = String((selection && selection.provider) || '')
+  const model = String((selection && selection.model) || '')
+  if (!provider || !model) throw new Error('未找到可用的默认模型')
+
+  const instruction = [
+    '把下面这段描述概括成一个中文短标题，不超过 15 个汉字。',
+    '只输出一行 JSON，例如 {"title":"背对镜头站立"}，不要输出任何其它文字。',
+    '描述里可能夹带 JSON 片段或括号标记，直接忽略这些符号，只根据文字部分概括。',
+    '',
+    kind === 'prompt' ? '提示词库条目描述：' : '动作描述：',
+    titleSourceText(text),
+  ].join('\n')
+  let answer = ''
+  let failure = null
+  const stream = llm.stream({
+    provider,
+    model,
+    system: TITLE_SYSTEM,
+    messages: [{ role: 'user', content: [{ type: 'text', text: instruction }] }],
+    // Reasoning models spend the budget on thinking before the answer, so this is
+    // deliberately generous: a title is ~10 tokens, the rest is headroom.
+    maxTokens: 512,
+    signal: timeoutSignal(30000),
+  })
+  for await (const chunk of stream) {
+    if (!chunk) continue
+    if (chunk.type === 'text-delta') {
+      answer += String(chunk.text === undefined ? '' : chunk.text)
+      // A chatty model can stream far more than a title; stop instead of
+      // buffering an answer that will be truncated anyway.
+      if (Array.from(answer).length > 400) break
+    } else if (chunk.type === 'finish') {
+      const reason = chunk.reason || {}
+      if (reason.kind === 'error' || reason.kind === 'aborted') failure = reason.failure
+      // A `max-tokens` finish is not fatal here: whatever came back is still
+      // checked below, and an empty answer fails there anyway.
+    }
+  }
+  if (failure) {
+    const detail = failure.message
+      ? `${failure.message}${failure.status ? ` (HTTP ${failure.status})` : ''}`
+      : '标题生成失败'
+    throw new Error(detail)
+  }
+  // Chat instead of a title: the description looked like a template to the model.
+  // Falling back keeps the wrong sentence out of the saved title.
+  if (TITLE_CHATTY_PATTERN.test(answer) && !parseTitleAnswer(answer)) {
+    throw new Error('文本模型返回了无关内容，已改用描述生成标题')
+  }
+  let title = parseTitleAnswer(answer)
+  if (!title) {
+    // A bare answer is only trusted when it reads like a label: short, no commas,
+    // and at least two Chinese characters. That rejects both commentary ("这是一段
+    // 很适合…") and short acknowledgements ("好的") the model sometimes sends.
+    const plain = sanitizeTitle(answer)
+    const trimmed = answer.trim()
+    const short = Array.from(trimmed).length <= TITLE_MAX_CHARS + 2
+    const cjk = (trimmed.match(/[\u4e00-\u9fff]/g) || []).length
+    const acknowledgement = /^(好的|好|明白|收到|了解|知道了|可以|嗯|行|ok|okay)[。.!！]?$/i.test(trimmed)
+    if (plain && short && cjk >= 2 && !acknowledgement && !/[，、；：,;:]/.test(trimmed)) title = plain
+  }
+  if (!title) throw new Error('文本模型没有返回可用的标题')
+  return { title, model: `${provider}/${model}` }
+}
+
 function createHandlers(ctx) {
   const handlers = {
     async health(req, res) {
@@ -2764,6 +2958,35 @@ function createHandlers(ctx) {
       sendJson(res, 200, { ok: true, path: path.join(targetDir, finalName), dir: targetDir })
     },
 
+    async title(req, res) {
+      if (!methodAllowed(req, res, ['POST'])) return
+      const body = await readJsonBody(req)
+      const raw = typeof body.text === 'string' ? body.text : ''
+      const text = raw.trim()
+      if (!text) return sendError(res, 400, 'missing-prompt', '提示词为空')
+      // Counted in code points, so an emoji counts once.
+      const length = Array.from(text).length
+      if (length > TITLE_TEXT_MAX_CHARS) {
+        return sendError(res, 400, 'prompt-too-long', `提示词过长（上限 ${TITLE_TEXT_MAX_CHARS} 字符，当前 ${length}）`)
+      }
+      const kind = body.kind === 'prompt' ? 'prompt' : 'pose'
+      // Every model problem becomes a usable title: only the two parameter checks
+      // above may answer 4xx, a title must never block the save that asked for it.
+      let payload
+      try {
+        const result = await titleFromModel(ctx, text, kind)
+        payload = { ok: true, title: result.title, source: 'model', model: result.model }
+      } catch (error) {
+        payload = {
+          ok: true,
+          title: fallbackTitle(text, kind),
+          source: 'fallback',
+          reason: String(error && error.message ? error.message : error) || '文本模型不可用，已用描述生成标题',
+        }
+      }
+      sendJson(res, 200, payload)
+    },
+
     async reveal(req, res) {
       if (!methodAllowed(req, res, ['POST'])) return
       const settings = await readSettings()
@@ -2992,6 +3215,7 @@ export function apply(ctx) {
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref-image`, handler: wrap(serveRefImage) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/reveal`, handler: wrap(handlers.reveal) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/poster`, handler: wrap(handlers.savePoster) }),
+      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/title`, handler: wrap(handlers.title) }),
     ]
     return () => {
       for (const dispose of disposers.reverse()) {
