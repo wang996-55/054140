@@ -151,6 +151,18 @@ window.__ModuleLoader__.load({
         promptDeletedCleared: '提示词已删除，生图页对应字段已清空',
         promptLegacySuffix: '（旧版）',
         promptMigrated: '已把生图页里原有的提示词转入提示词库',
+        promptExport: '导出',
+        promptImport: '导入',
+        promptIOPortHint: '「导出」把整个提示词库存成一个 JSON 文件；换电脑或另一个 Harness 时用「导入」一键加回来，同类别同内容的条目会自动跳过。',
+        promptExported: '已导出提示词',
+        promptCountUnit: ' 条',
+        promptExportEmpty: '提示词库还是空的，没有可导出的内容',
+        promptExportFailed: '导出失败：浏览器阻止了下载，请重试',
+        promptImportDone: '已导入提示词',
+        promptImportSkipped: '，已跳过重复或无效：',
+        promptImportInvalid: '导入失败：这个文件不是有效的提示词文件（请选择导出的 JSON）',
+        promptImportEmpty: '这个文件里没有可导入的提示词',
+        promptImportAllDup: '文件里的提示词都已存在，没有新增',
         fPose: '姿态',
         fPoseCustom: '＋ 自定义动作',
         poseEmptyHint: '暂无自定义动作。点下方「＋ 自定义动作」进入动作库添加',
@@ -414,6 +426,18 @@ window.__ModuleLoader__.load({
         promptDeletedCleared: 'Prompt deleted; the studio field was cleared',
         promptLegacySuffix: ' (legacy)',
         promptMigrated: 'Existing studio prompts were imported into the prompt library',
+        promptExport: 'Export',
+        promptImport: 'Import',
+        promptIOPortHint: 'Export saves the whole prompt library as one JSON file; Import adds it back on another machine or in another Harness and skips entries this library already has in the same category.',
+        promptExported: 'Exported',
+        promptCountUnit: ' prompts',
+        promptExportEmpty: 'The prompt library is empty; nothing to export',
+        promptExportFailed: 'Export failed: the browser blocked the download',
+        promptImportDone: 'Imported',
+        promptImportSkipped: ', skipped duplicate or invalid: ',
+        promptImportInvalid: 'Import failed: this is not a valid prompt file (choose an exported JSON)',
+        promptImportEmpty: 'This file contains no importable prompts',
+        promptImportAllDup: 'Every prompt in the file is already in the library',
         fPose: 'Pose',
         fPoseCustom: '+ Custom pose',
         poseEmptyHint: 'No custom actions yet. Use “+ Custom pose” below to open the action library.',
@@ -1043,6 +1067,151 @@ window.__ModuleLoader__.load({
       return (Array.isArray(value) ? value : []).filter(item => (
         item && typeof item.id === 'string' && typeof item.text === 'string'
       )).map(item => ({ ...item, kind: item.kind || 'style' }))
+    }
+
+    // -------------------------------------------------- prompt import/export
+    // The prompt library is the only place prompts are authored, so it is also
+    // the unit that moves between machines: one JSON file, one click each way.
+    // Ids are local bookkeeping and never travel; a prompt is identified by its
+    // kind plus its exact text, which is also what the duplicate guard uses.
+    const PROMPT_EXPORT_FORMAT = 'personal-workbench.prompt-library'
+    const PROMPT_EXPORT_VERSION = 1
+    const PROMPT_KIND_ALIASES = {
+      model: 'model', scene: 'scene', style: 'style',
+      models: 'model', backgrounds: 'scene', background: 'scene',
+      modelprompt: 'model', backgroundprompt: 'scene', extraprompt: 'style',
+      '模特': 'model', '背景': 'scene', '风格': 'style', '自定义': 'style',
+      '模特提示词': 'model', '背景提示词': 'scene', '风格提示词': 'style', '自定义提示词': 'style',
+    }
+
+    function normalizePromptKind(kind) {
+      const key = String(kind == null ? '' : kind).trim().toLowerCase()
+      return PROMPT_KIND_ALIASES[key] || 'style'
+    }
+
+    function promptEntryText(item) {
+      if (typeof item === 'string') return item.trim()
+      if (!item || typeof item !== 'object') return ''
+      const raw = [item.text, item.prompt, item.content, item.value].find(value => typeof value === 'string')
+      return String(raw || '').trim()
+    }
+
+    function promptEntryName(item, text) {
+      if (item && typeof item === 'object') {
+        const name = [item.name, item.title, item.label].find(value => typeof value === 'string' && value.trim())
+        if (name) return name.trim()
+      }
+      return text.slice(0, 16)
+    }
+
+    /** Snapshot of the whole library as one portable JSON payload. */
+    function buildPromptExport(prompts, now) {
+      const list = (Array.isArray(prompts) ? prompts : [])
+        .map(item => {
+          const text = promptEntryText(item)
+          if (!text) return null
+          return { name: promptEntryName(item, text), kind: normalizePromptKind(item && item.kind), text }
+        })
+        .filter(Boolean)
+      return {
+        app: PROMPT_EXPORT_FORMAT,
+        version: PROMPT_EXPORT_VERSION,
+        exportedAt: new Date(now || Date.now()).toISOString(),
+        count: list.length,
+        prompts: list,
+      }
+    }
+
+    /** Accepted payload shapes: our export, a bare list, or a wrapped list. */
+    function promptImportList(payload) {
+      if (Array.isArray(payload)) return payload
+      if (!payload || typeof payload !== 'object') return null
+      for (const key of ['prompts', 'items', 'entries', 'data']) {
+        if (Array.isArray(payload[key])) return payload[key]
+      }
+      return null
+    }
+
+    /**
+     * Reads an exported file back into library entries. Anything already in the
+     * library with the same kind + text is skipped instead of duplicated.
+     * @returns {{ok: boolean, entries: Array, duplicates: number, invalid: number}}
+     */
+    function parsePromptImport(raw, existing) {
+      const failed = { ok: false, entries: [], duplicates: 0, invalid: 0 }
+      let payload = raw
+      if (typeof raw === 'string') {
+        try {
+          payload = JSON.parse(raw)
+        } catch {
+          return failed
+        }
+      }
+      const list = promptImportList(payload)
+      if (!list) return failed
+      const seen = new Set()
+      for (const item of Array.isArray(existing) ? existing : []) {
+        const text = promptEntryText(item)
+        if (text) seen.add(`${normalizePromptKind(item && item.kind)}\u0000${text}`)
+      }
+      const entries = []
+      let duplicates = 0
+      let invalid = 0
+      const stamp = Date.now().toString(36)
+      for (const item of list) {
+        const text = promptEntryText(item)
+        if (!text) {
+          invalid += 1
+          continue
+        }
+        const kind = normalizePromptKind(item && item.kind)
+        const key = `${kind}\u0000${text}`
+        if (seen.has(key)) {
+          duplicates += 1
+          continue
+        }
+        seen.add(key)
+        entries.push({
+          id: `pr-${stamp}${entries.length}${Math.random().toString(36).slice(2, 5)}`,
+          kind,
+          name: promptEntryName(item, text),
+          text,
+        })
+      }
+      return { ok: true, entries, duplicates, invalid }
+    }
+
+    function promptExportFilename(now) {
+      const date = new Date(now || Date.now())
+      const pad = value => String(value).padStart(2, '0')
+      return `prompts-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.json`
+    }
+
+    /** Saves text as a download; false when the environment cannot offer one. */
+    function downloadTextFile(filename, text, mime) {
+      try {
+        if (typeof Blob !== 'function' || typeof document === 'undefined') return false
+        if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return false
+        const url = URL.createObjectURL(new Blob([text], { type: mime || 'text/plain' }))
+        const link = document.createElement('a')
+        if (!link) return false
+        link.href = url
+        link.download = filename
+        if (typeof link.click === 'function') link.click()
+        window.setTimeout(() => URL.revokeObjectURL(url), 2000)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    function readBlobAsText(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ''))
+        reader.onerror = () => reject(reader.error || new Error('read failed'))
+        reader.readAsText(blob)
+      })
     }
 
     function settingsToDraft(value) {
@@ -2176,6 +2345,33 @@ window.__ModuleLoader__.load({
         setNotice({ kind: 'ok', text: t('promptArchived') })
       }, [reusablePrompts, persistReusablePrompts, t])
 
+      // Imported entries are appended as-is: they already carry an id, a kind and
+      // a name, and parsePromptImport dropped everything the library has.
+      const importReusablePrompts = useCallback((entries, meta) => {
+        const valid = (Array.isArray(entries) ? entries : []).filter(item => (
+          item && typeof item.id === 'string' && typeof item.text === 'string' && item.text.trim()
+        ))
+        if (!valid.length) return
+        persistReusablePrompts([...reusablePrompts, ...valid.map(item => ({
+          ...item,
+          kind: normalizePromptKind(item.kind),
+          name: String(item.name || '').trim() || item.text.slice(0, 16),
+          text: item.text.trim(),
+        }))])
+        const skipped = (meta && Number(meta.duplicates || 0)) + (meta && Number(meta.invalid || 0))
+        const base = `${t('promptImportDone')} ${valid.length}${t('promptCountUnit')}`
+        setNotice({
+          kind: 'ok',
+          text: skipped > 0 ? `${base}${t('promptImportSkipped')}${skipped}` : base,
+        })
+      }, [reusablePrompts, persistReusablePrompts, t])
+
+      const reportPromptExport = useCallback((count, saved) => {
+        setNotice(saved
+          ? { kind: 'ok', text: `${t('promptExported')} ${count}${t('promptCountUnit')}` }
+          : { kind: 'error', text: t('promptExportFailed') })
+      }, [t])
+
       // Prompt fields used to accept typed text; whatever is still persisted in
       // them (or restored from a template written by an older version) has no chip
       // now, so import those leftovers into the library once.
@@ -2780,6 +2976,8 @@ window.__ModuleLoader__.load({
             onSave: saveReusablePrompt,
             onUpdate: updateReusablePrompt,
             onDelete: deleteReusablePrompt,
+            onImport: importReusablePrompts,
+            onExport: reportPromptExport,
           })
         } else {
           body = h(StudioTab, {
@@ -4443,7 +4641,7 @@ window.__ModuleLoader__.load({
     // One management page for every reusable prompt: style/framing, model and
     // background. The studio fields add entries; this page edits/deletes them.
     function PromptLibrary(props) {
-      const { lang, t, prompts, draft, setDraft, onBack, onSave, onUpdate, onDelete } = props
+      const { lang, t, prompts, draft, setDraft, onBack, onSave, onUpdate, onDelete, onImport, onExport } = props
       // Editing a row opens the fields inside that row; "new prompt" opens the
       // same fields in a card above the list. The draft itself lives in the app so
       // leaving this page cannot silently discard typed text.
@@ -4520,6 +4718,51 @@ window.__ModuleLoader__.load({
         setConfirmId(null)
         onDelete(prompt.id)
         if (editor && editor.id === prompt.id) setDraft(null)
+      }
+
+      // One click each way: the whole library leaves as a JSON file and comes back
+      // through the same shape, so a second machine needs no re-typing.
+      const fileInputRef = useRef(null)
+      const exportPrompts = () => {
+        if (promptList.length === 0) {
+          setWarning(t('promptExportEmpty'))
+          return
+        }
+        const payload = buildPromptExport(promptList)
+        const saved = downloadTextFile(promptExportFilename(), JSON.stringify(payload, null, 2), 'application/json')
+        setWarning(saved ? '' : t('promptExportFailed'))
+        if (typeof onExport === 'function') onExport(payload.count, saved)
+      }
+      const chooseImportFile = () => {
+        const input = fileInputRef.current
+        if (!input) return
+        input.value = ''
+        if (typeof input.click === 'function') input.click()
+      }
+      const importFromFile = async event => {
+        const input = event && event.target
+        const file = input && input.files && input.files[0]
+        if (!file) return
+        try {
+          const raw = typeof file.text === 'function' ? await file.text() : await readBlobAsText(file)
+          const result = parsePromptImport(raw, promptList)
+          if (!result.ok) {
+            setWarning(t('promptImportInvalid'))
+            return
+          }
+          if (result.entries.length === 0) {
+            setWarning(result.invalid && !result.duplicates ? t('promptImportEmpty') : t('promptImportAllDup'))
+            return
+          }
+          setWarning('')
+          if (typeof onImport === 'function') {
+            onImport(result.entries, { duplicates: result.duplicates, invalid: result.invalid })
+          }
+        } catch {
+          setWarning(t('promptImportInvalid'))
+        } finally {
+          if (input) input.value = ''
+        }
       }
 
       const editorFields = () => [
@@ -4659,9 +4902,28 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: onBack, style: ghostButton({ padding: '6px 12px', fontSize: 12.5 }) }, t('poseBack')),
           h('div', { style: { fontSize: 16, fontWeight: 680 } }, t('promptLibraryTitle')),
           h('div', { style: { flex: 1 } }),
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: exportPrompts,
+              style: softButton({ opacity: promptList.length ? 1 : 0.55 }),
+            },
+            t('promptExport'),
+          ),
+          h('button', { type: 'button', onClick: chooseImportFile, style: softButton() }, t('promptImport')),
           h('button', { type: 'button', onClick: startNew, style: tintButton() }, t('promptNewForKind')),
         ),
+        h('input', {
+          key: 'prompt-import-file',
+          type: 'file',
+          accept: 'application/json,.json',
+          ref: fileInputRef,
+          style: { display: 'none' },
+          onChange: importFromFile,
+        }),
         h('div', { style: { fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 14px', lineHeight: 1.65 } }, t('promptLibraryHint')),
+        h('div', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', margin: '0 0 14px', lineHeight: 1.65 } }, t('promptIOPortHint')),
         warning
           ? h(
               'div',
