@@ -1630,11 +1630,48 @@ window.__ModuleLoader__.load({
       return Array.from(text).slice(0, TITLE_MAX_CHARS).join('')
     }
 
+    /** A description pasted from another tool often carries its own name already
+     *  (`"动作名称": "正面微侧身持手机自然站姿"`); that field is the most accurate
+     *  title, so it is used verbatim before anything is derived or asked for.
+     *  Mirrors the host: keys need a left boundary, and the ASCII keys take no
+     *  whitespace boundary so `job title:` / `subtitle:` cannot match. */
+    const TITLE_FIELD_VALUE = '([^"“”\'，,。;；\\n\\r}]{2,40})'
+    const TITLE_FIELD_CJK = new RegExp(
+      `(?:^|[\\s{,;、。，（(["“”'])["“”']?(?:动作名称|姿势名称|姿态名称|动作标题|标题|名称)["“”']?\\s*[:：=]\\s*["“”']?${TITLE_FIELD_VALUE}`,
+      'i',
+    )
+    const TITLE_FIELD_ASCII = new RegExp(
+      `(?:^|[{,;、。，（(["“”'])["“”']?(?:pose[ _-]?name|title)["“”']?\\s*[:：=]\\s*["“”']?${TITLE_FIELD_VALUE}`,
+      'i',
+    )
+    function titleFromField(text) {
+      const source = String(text || '')
+      const match = TITLE_FIELD_CJK.exec(source) || TITLE_FIELD_ASCII.exec(source)
+      if (!match) return ''
+      return clipTitle(match[1].replace(/\\+/g, ' ').replace(/\s+/g, ' ').trim())
+    }
+
+    // Labels that name a block rather than an action: a clause made only of these
+    // is skipped instead of becoming the title (mirrors the host).
+    const TITLE_LABEL_PATTERN = /^(构图约束|构图|保真规则|保真|规则|约束|要求|参考图名称|参考图|参考|元数据|标签|占位|备注|名称|标题)/
+    function peelTitleLabel(clause) {
+      let base = String(clause || '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
+      for (let pass = 0; pass < 4 && base && TITLE_LABEL_PATTERN.test(base); pass += 1) {
+        const next = base.replace(TITLE_LABEL_PATTERN, '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
+        if (!next) return ''
+        if (next === base) break
+        base = next
+      }
+      return base
+    }
+
     /** Offline fallback: the first clause, squeezed into the same 15 characters.
      *  Mirrors the host's `fallbackTitle`: JSON blocks go entirely, bracket shells
-     *  are removed but their content stays, and a leading metadata label such as
-     *  「构图约束」 is peeled off so it never becomes the title. */
+     *  are removed but their content stays, and clauses that are only a label such
+     *  as 「构图约束」/「参考图名称」 are skipped so they never become the title. */
     function localTitle(text, kind) {
+      const named = titleFromField(text)
+      if (named) return named
       let flat = String(text || '')
       for (let pass = 0; pass < 3 && flat.indexOf('{') >= 0; pass += 1) {
         const next = flat.replace(/\{[^{}]*\}/g, ' ')
@@ -1646,16 +1683,13 @@ window.__ModuleLoader__.load({
         .replace(/[【】《》（）「」『』]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-      let base = flat.split(/[。，、；：！？.!?;:]/)[0] || flat
-      const metadata = /^(构图约束|构图|保真规则|保真|规则|约束|要求|参考图|参考|元数据|标签|占位)/
-      for (let pass = 0; pass < 3 && metadata.test(base); pass += 1) {
-        const next = base.replace(metadata, '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
-        if (!next) {
-          base = ''
+      let base = ''
+      for (const clause of flat.split(/[。，、；：！？.!?;:]/)) {
+        const peeled = peelTitleLabel(clause)
+        if (peeled) {
+          base = peeled
           break
         }
-        if (next === base) break
-        base = next
       }
       return clipTitle(base) || (kind === 'prompt' ? '未命名提示词' : '未命名动作')
     }

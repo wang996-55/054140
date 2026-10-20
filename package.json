@@ -1,6 +1,6 @@
 {
   "name": "@local/personal-workbench",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "type": "module",
   "description": "Personal workbench page for the DeepSeek Harness Web UI: dashboard, e-commerce model image studio, and appearance preferences.",

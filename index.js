@@ -2542,9 +2542,57 @@ function sanitizeTitle(raw) {
   return Array.from(text).slice(0, TITLE_MAX_CHARS).join('').trim()
 }
 
+/** A description pasted from another tool often carries its own name already
+ *  (`"动作名称": "正面微侧身持手机自然站姿"`). That field is the most accurate title
+ *  available — it is what the author called the action — so it is used verbatim
+ *  and no model call is spent.
+ *
+ *  The key needs a left boundary, and the ASCII keys take no whitespace boundary:
+ *  otherwise `参考图名称:` matches through `名称:` and `job title:` matches through
+ *  ` title:`, and prose becomes the title. Chinese keys keep the whitespace form
+ *  because `名称: 正面站立` is a normal way to write them. */
+const TITLE_FIELD_VALUE = '([^"“”\'，,。;；\\n\\r}]{2,40})'
+const TITLE_FIELD_CJK = new RegExp(
+  `(?:^|[\\s{,;、。，（(["“”'])["“”']?(?:动作名称|姿势名称|姿态名称|动作标题|标题|名称)["“”']?\\s*[:：=]\\s*["“”']?${TITLE_FIELD_VALUE}`,
+  'i',
+)
+const TITLE_FIELD_ASCII = new RegExp(
+  `(?:^|[{,;、。，（(["“”'])["“”']?(?:pose[ _-]?name|title)["“”']?\\s*[:：=]\\s*["“”']?${TITLE_FIELD_VALUE}`,
+  'i',
+)
+
+function titleFromField(text) {
+  const source = String(text === null || text === undefined ? '' : text)
+  const match = TITLE_FIELD_CJK.exec(source) || TITLE_FIELD_ASCII.exec(source)
+  if (!match) return ''
+  return sanitizeTitle(match[1].replace(/\\+/g, ' ').replace(/\s+/g, ' ').trim())
+}
+
+// Labels that name a block rather than an action: a clause made only of these is
+// skipped instead of becoming the title.
+const TITLE_LABEL_PATTERN = /^(构图约束|构图|保真规则|保真|规则|约束|要求|参考图名称|参考图|参考|元数据|标签|占位|备注|名称|标题)/
+
+/** Peel labels and ASCII noise off one clause; `''` means "this clause is only a
+ *  label", so the caller moves on to the next one. */
+function peelTitleLabel(clause) {
+  let base = String(clause === null || clause === undefined ? '' : clause)
+    .replace(/^[^\u4e00-\u9fff]+/, '')
+    .trim()
+  for (let pass = 0; pass < 4 && base && TITLE_LABEL_PATTERN.test(base); pass += 1) {
+    const next = base.replace(TITLE_LABEL_PATTERN, '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
+    if (!next) return ''
+    if (next === base) break
+    base = next
+  }
+  return base
+}
+
 /** Local title used when the model is unavailable. Strips JSON noise, keeps the
  *  first readable clause, and is never empty so the page always has a label. */
 function fallbackTitle(text, kind) {
+  // A name field in the text beats anything derived from the prose.
+  const field = titleFromField(text)
+  if (field) return field
   const cleaned = String(text === null || text === undefined ? '' : text)
     // `{构图约束}` / `{"fidelity":"x"}` blocks are app metadata, not description
     // text, so the whole block goes: keeping its content would title the action
@@ -2559,22 +2607,16 @@ function fallbackTitle(text, kind) {
     .split(/[。，、；：！？.!?;:,]/)
     .map(part => part.trim())
     .filter(Boolean)
-  // Prefer a clause that actually reads as Chinese: a JSON fragment such as
-  // {"fidelity":"x"} leaves an ASCII key in front of the description, which makes
-  // a useless label, so that leading noise is dropped.
-  const candidate = clauses.find(part => /[\u4e00-\u9fff]/.test(part))
-  let base = candidate ? candidate.replace(/^[^\u4e00-\u9fff]+/, '') : (clauses[0] || cleaned)
-  // A leading label such as 「构图约束」/「保真规则」/「元数据」 names the block, not the
-  // action, so it is peeled off before the title is cut.
-  const metadata = /^(构图约束|构图|保真规则|保真|规则|约束|要求|参考图|参考|元数据|标签|占位)/
-  for (let pass = 0; pass < 3 && metadata.test(base); pass += 1) {
-    const next = base.replace(metadata, '').replace(/^[^\u4e00-\u9fff]+/, '').trim()
-    if (!next) {
-      base = ''
+  // The first clause that is not just a label wins; a JSON fragment such as
+  // {"fidelity":"x"} leaves an ASCII key in front of the description, which the
+  // peel step drops as well.
+  let base = ''
+  for (const clause of clauses) {
+    const peeled = peelTitleLabel(clause)
+    if (peeled) {
+      base = peeled
       break
     }
-    if (next === base) break
-    base = next
   }
   const title = sanitizeTitle(base)
   if (title) return title
@@ -2970,6 +3012,10 @@ function createHandlers(ctx) {
         return sendError(res, 400, 'prompt-too-long', `提示词过长（上限 ${TITLE_TEXT_MAX_CHARS} 字符，当前 ${length}）`)
       }
       const kind = body.kind === 'prompt' ? 'prompt' : 'pose'
+      // A名称 field inside the text is the author's own label, so it wins outright
+      // and no model call is spent on paraphrasing it.
+      const named = titleFromField(text)
+      if (named) return sendJson(res, 200, { ok: true, title: named, source: 'text' })
       // Every model problem becomes a usable title: only the two parameter checks
       // above may answer 4xx, a title must never block the save that asked for it.
       let payload
