@@ -216,6 +216,8 @@ window.__ModuleLoader__.load({
         poseGroupBack: '背面',
         poseOrient: '朝向分组',
         poseOrientationHint: '分组只影响生图页「姿态」的排列，不改变动作内容',
+    poseOrientAuto: '由标题自动判断',
+    poseOrientAutoHint: '标题里写了正面 / 侧面 / 背面时以标题为准；想换分组就改标题',
         poseNew: '＋ 新建动作',
         poseImport: '导入',
         poseExport: '导出',
@@ -570,6 +572,8 @@ window.__ModuleLoader__.load({
         poseGroupBack: 'Back',
         poseOrient: 'Orientation',
         poseOrientationHint: 'The group only changes how poses are listed in the studio; the action itself is unchanged',
+    poseOrientAuto: 'detected from the title',
+    poseOrientAutoHint: 'The title decides the group when it says front, side or back; rename it to move the action',
         poseNew: '+ New action',
         poseImport: 'Import',
         poseExport: 'Export',
@@ -1416,13 +1420,17 @@ window.__ModuleLoader__.load({
     }
 
     function poseOrientationOf(value) {
+      // The title is the user's own label, so an orientation written in it wins
+      // over the stored field: renaming 「正面站姿」 to 「背对镜头站立」 re-groups the
+      // action without any extra step. Only a title that says nothing about the
+      // direction falls back to the stored value, then to the description.
+      const fromName = guessPoseOrientation(value && value.name, POSE_NAME_TESTS)
+      if (fromName) return fromName
       const raw = String((value && value.orientation) || '')
         .toLowerCase()
         .replace(/[\s_-]+/g, '')
       if (raw && POSE_ORIENTATION_ALIASES[raw]) return POSE_ORIENTATION_ALIASES[raw]
-      return guessPoseOrientation(value && value.name, POSE_NAME_TESTS)
-        || guessPoseOrientation(value && value.prompt, POSE_ORIENTATION_TESTS)
-        || 'front'
+      return guessPoseOrientation(value && value.prompt, POSE_ORIENTATION_TESTS) || 'front'
     }
 
     function groupPoses(poses) {
@@ -6456,7 +6464,15 @@ window.__ModuleLoader__.load({
         setFlash('')
         setWarning('')
         setConfirmId(null)
-        setEditor(prev => (prev ? { ...prev, ...patch } : prev))
+        setEditor(prev => {
+          if (!prev) return prev
+          const next = { ...prev, ...patch }
+          // Typing a title that names a direction re-groups the action at once, so
+          // the chips below show what the title decided instead of an old choice.
+          const derived = guessPoseOrientation(next.name, POSE_NAME_TESTS)
+          if (derived) next.orientation = derived
+          return next
+        })
       }
 
       const save = async () => {
@@ -6474,8 +6490,11 @@ window.__ModuleLoader__.load({
         }
         name = clipTitle(name) || localTitle(prompt, 'pose')
         if (!name) return
+        // The saved orientation follows the title first, so the group in the
+        // studio matches what the name says even after an auto-generated title.
+        const orientation = poseOrientationOf({ name, orientation: editor.orientation, prompt })
         const id = editor.id || `pose-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
-        onSavePose({ id, name, prompt, orientation: editor.orientation || 'front' })
+        onSavePose({ id, name, prompt, orientation })
         setEditor(null)
         setConfirmId(null)
         setFlash(t('poseSaved'))
@@ -6585,6 +6604,39 @@ window.__ModuleLoader__.load({
           ),
         )
 
+      // The group follows the title: when the title names a direction the chips
+      // would be a lie (any click is overruled on save), so they are replaced by a
+      // read-only badge that says where the group came from.
+      const orientationStatus = draft => {
+        const derived = guessPoseOrientation(draft.name, POSE_NAME_TESTS)
+        if (!derived) return orientationChips(poseOrientationOf(draft))
+        return h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          h(
+            'span',
+            {
+              style: {
+                padding: '4px 12px',
+                borderRadius: 999,
+                fontSize: 12,
+                background: 'var(--dsw-alias-brand-primary)',
+                color: '#ffffff',
+              },
+            },
+            orientationLabel(derived),
+          ),
+          h(
+            'span',
+            { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
+            t('poseOrientAuto'),
+          ),
+        )
+      }
+
+      const orientationHintText = draft =>
+        guessPoseOrientation(draft.name, POSE_NAME_TESTS) ? t('poseOrientAutoHint') : t('poseOrientationHint')
+
       // Same fields for a new draft and for an in-place row edit.
       const editorCard = draft =>
         h(
@@ -6637,7 +6689,11 @@ window.__ModuleLoader__.load({
               style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
             }),
           ),
-          h(Field, { label: t('poseOrient') }, orientationChips(draft.orientation)),
+          h(
+            Field,
+            { label: t('poseOrient'), hint: orientationHintText(draft) },
+            orientationStatus(draft),
+          ),
           h(
             'div',
             { style: { display: 'flex', gap: 8, marginTop: 4 } },
