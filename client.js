@@ -2,8 +2,9 @@
  * Client half of the Personal Workbench bundle.
  *
  * Registers a sidebar panel icon ("工作台") and the matching main-panel page.
- * The page has three tabs: overview dashboard, e-commerce model image studio,
- * and settings (API endpoint / key / output folder / accent color).
+ * The page has four tabs: overview dashboard, e-commerce model image studio,
+ * size-chart posters, and settings (image API endpoint / key / output folder /
+ * accent color / built-in prompt).
  *
  * The studio sends the model reference sheet (four-view turnaround) and an
  * optional product photo to the Host, which forwards them to an
@@ -20,6 +21,9 @@ window.__ModuleLoader__.load({
     // How many generation jobs may run against the image API at the same time.
     // Further clicks stay in the queue and start as soon as a slot frees up.
     const MAX_CONCURRENT_JOBS = 3
+    // After the product reference photos change, wait this long with no further
+    // change before automatically extracting the product description.
+    const AUTO_EXTRACT_DELAY_MS = 5000
     const LS_FORM = 'pbw.form.v1'
     const LS_PROMPTS = 'pbw.prompts.v1'
     const LS_POSES = 'pbw.poses.v1'
@@ -158,6 +162,7 @@ window.__ModuleLoader__.load({
         poseSelected: '当前选中',
         poseSaved: '已保存',
         fShow: '模特展示',
+        showHint: '裁切位置会作为硬性构图约束写入提示词（开头与结尾各强调一次）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
         fExtraPrompt: '自定义提示词（光线 / 风格等自由填写）',
         fExtraPromptPh: '例：柔和侧逆光，暖色调，杂志高级感，film grain，35mm 质感',
         saveReusable: '＋ 保存为可复用提示词',
@@ -183,8 +188,13 @@ window.__ModuleLoader__.load({
         extractFromRefs: '从商品图提取',
         extracting: '提取中…',
         extractNeedRef: '请先在上方「商品参考图」上传商品图',
-        extractDone: '已从商品参考图提取关键元素，可手动修改',
+        extractDone: '已按 JSON 提取商品关键元素，可手动修改',
         extractEmpty: '没有提取到内容，请换一张更清晰的商品图',
+        visionBadgeBuiltin: '识别接口：Harness 内置视觉模型',
+        visionBadgeCustom: '识别接口：第三方视觉模型',
+        visionConfigure: '切换识别接口',
+        visionIncomplete: '识别接口：视觉接口未配置完整（缺接口地址或模型名）',
+        lockHint: '识别时使用「商品细节严格锁定」12 项规则，结果以 JSON 填入商品描述并进入提示词',
         fProductRef: '商品参考图（可选）',
         fProductRefHint: '可上传多张（服装正反面 / 细节图），生成时作为商品参考',
         fProductRefAdd: '上传商品图',
@@ -194,6 +204,7 @@ window.__ModuleLoader__.load({
         remove: '移除',
         modeEdit: '图生图模式',
         modeText: '文生图模式',
+        echoRetried: '接口曾返回参考图原样，已自动重试成功',
         fNeg: '负面词',
         fNegPh: '模糊、低清晰度、噪点、压缩痕迹、水印、文字、多余手指、变形的手、多手多脚、五官扭曲、严重畸变、背景错乱、背景杂乱、人物与背景融合、穿模、画面透灰不清晰、雾面、过曝、欠曝、色彩失真、偏色、材质错误、商品变形、过度锐化、塑料感',
         fNegInclude: '把负面词以「严禁出现」拼进提示词',
@@ -212,6 +223,11 @@ window.__ModuleLoader__.load({
         queueError: '失败',
         queueRunningCount: '并行生成',
         queueClearFinished: '清除已完成',
+        errBalance: '接口账户余额不足（insufficient balance）：请到对应平台充值，或在「设置」里更换接口。',
+        errAuth: '接口鉴权失败：请检查 API Key 是否正确、是否过期。',
+        errRate: '接口限流或上游繁忙：稍后重试，或减少同时生成的数量。',
+        errTimeout: '接口响应超时：稍后重试，或换用响应更快的接口。',
+        queueStopped: '接口余额/鉴权异常，已停止剩余排队任务；处理后重新生成即可。',
         needKey: '请先在「设置」里填写 API Key 和接口地址。',
         needPrompt: '请先填写提示词或选择一个模板。',
         resultTitle: '生成结果',
@@ -222,6 +238,7 @@ window.__ModuleLoader__.load({
         profilesHint: '可添加多个接口并备注名称，点一下即切换；生图时使用标着「当前」的那个接口。',
         addProfile: '＋ 新增配置',
         deleteProfile: '删除此配置',
+        confirmRemove: '再点一次确认删除',
         profileName: '备注名称',
         profileNamePh: '例：豆包 Seedream / OpenAI 官方',
         newProfileName: '新配置',
@@ -239,10 +256,27 @@ window.__ModuleLoader__.load({
         sKeyPhSet: '已保存，留空则不修改',
         sKeyPhEmpty: 'sk-…',
         sClearKey: '清除 Key',
-        sSize: '尺寸写法（x 或 *）',
-        sSizeHint: '只决定请求里尺寸的分隔符：填 2048*2048 就用 *，填 2048x2048 就用 x；实际分辨率由「画幅 + 分辨率」决定',
         sQuality: '画质参数（留空则不发）',
+        sRequestType: '请求类型',
+        sRequestTypeStream: '流式响应（推荐）',
+        sRequestTypeJson: '非流式响应',
+        sRequestTypeHint: '流式：边生成边接收，长耗时接口更稳；接口明确不支持流式时会自动回退为非流式',
         sOutput: '输出目录',
+        visionTitle: '商品图识别模型（可选）',
+        visionHint: '默认使用 Harness 内置视觉模型识别商品图和尺码表；也可以添加多个第三方 OpenAI 兼容视觉接口并自由切换。识别商品图时会带上「商品细节严格锁定」的 12 项规则。',
+        visionBuiltinName: 'Harness 内置视觉模型（默认）',
+        visionBuiltinHint: '使用 Harness 当前模型识别，无需接口和 Key',
+        visionAddProfile: '＋ 添加视觉接口',
+        visionDeleteProfile: '删除这个视觉接口',
+        newVisionProfileName: '视觉接口',
+        visionBaseUrl: '接口地址',
+        visionBaseUrlHint: 'OpenAI 兼容，需包含 /v1，例如 https://api.openai.com/v1',
+        visionModel: '模型名称',
+        visionModelHint: '需要支持图片输入，例如 gpt-4o-mini / qwen-vl-max / gemini-2.0-flash',
+        needBaseUrl: '请先填写接口地址，再拉取模型',
+        visionKey: '视觉模型 API Key',
+        visionUsingCustom: '当前使用第三方视觉模型',
+        visionUsingBuiltin: '当前使用 Harness 内置视觉模型',
         pick: '选择目录',
         save: '保存设置',
         saved: '已保存',
@@ -383,6 +417,7 @@ window.__ModuleLoader__.load({
         poseSelected: 'Selected',
         poseSaved: 'Saved',
         fShow: 'Model framing',
+        showHint: 'The crop is written into the prompt as a hard composition constraint (stated at the start and the end). The model may still drift slightly.',
         fExtraPrompt: 'Custom prompt (lighting, style, anything)',
         fExtraPromptPh: 'e.g. soft rim light, warm tones, editorial mood, film grain',
         saveReusable: '+ Save as reusable prompt',
@@ -408,8 +443,13 @@ window.__ModuleLoader__.load({
         extractFromRefs: 'Extract from photos',
         extracting: 'Extracting…',
         extractNeedRef: 'Upload product photos first',
-        extractDone: 'Key elements extracted from the product photos; edit as needed',
+        extractDone: 'Key elements extracted as JSON; edit as needed',
         extractEmpty: 'Nothing extracted; try a clearer product photo',
+        visionBadgeBuiltin: 'Recognition: Harness built-in vision model',
+        visionBadgeCustom: 'Recognition: third-party vision model',
+        visionConfigure: 'Change recognition API',
+        visionIncomplete: 'Recognition: the vision endpoint is incomplete (base URL or model missing)',
+        lockHint: 'Recognition uses the strict 12-feature product lock; the result is written as JSON into the description and the generation prompt',
         fProductRef: 'Product reference (optional)',
         fProductRefHint: 'Multiple photos allowed (front/back/detail); sent as product references',
         fProductRefAdd: 'Upload product',
@@ -419,6 +459,7 @@ window.__ModuleLoader__.load({
         remove: 'Remove',
         modeEdit: 'Image-to-image',
         modeText: 'Text-to-image',
+        echoRetried: 'Gateway echoed the reference once; retried automatically and succeeded',
         fNeg: 'Negative prompt',
         fNegPh: 'blurry, low clarity, noise, compression artifacts, watermark, text, extra fingers, deformed hands, extra limbs, distorted face, severe distortion, chaotic background, cluttered background, subject blending into background, clipping artifacts, hazy washed-out image, foggy, overexposed, underexposed, color distortion, color cast, wrong material, distorted product, oversharpened, plastic look',
         fNegInclude: 'Append negative prompt as “strictly forbidden”',
@@ -437,6 +478,11 @@ window.__ModuleLoader__.load({
         queueError: 'Failed',
         queueRunningCount: 'running',
         queueClearFinished: 'Clear finished',
+        errBalance: 'The API account is out of balance: top up on the provider side, or switch the profile in Settings.',
+        errAuth: 'API authentication failed: check the API key is correct and not expired.',
+        errRate: 'The API is rate-limited or the upstream is busy: retry later, or run fewer generations at once.',
+        errTimeout: 'The API timed out: retry later, or switch to a faster endpoint.',
+        queueStopped: 'Balance/auth error on the active API: remaining queued jobs were stopped. Fix it and generate again.',
         needKey: 'Set the API endpoint and key in Settings first.',
         needPrompt: 'Write a prompt or pick a template first.',
         resultTitle: 'Results',
@@ -447,6 +493,7 @@ window.__ModuleLoader__.load({
         profilesHint: 'Add several endpoints, give each a note, and click one to switch. Generation uses the profile marked CURRENT.',
         addProfile: '+ Add profile',
         deleteProfile: 'Delete this profile',
+        confirmRemove: 'Click again to confirm',
         profileName: 'Note / name',
         profileNamePh: 'e.g. Doubao Seedream / OpenAI official',
         newProfileName: 'New profile',
@@ -464,10 +511,27 @@ window.__ModuleLoader__.load({
         sKeyPhSet: 'Saved — leave empty to keep',
         sKeyPhEmpty: 'sk-…',
         sClearKey: 'Clear key',
-        sSize: 'Size format (x or *)',
-        sSizeHint: 'Only the separator of the size sent to the API is taken from here: 2048*2048 uses *, 2048x2048 uses x. The actual size comes from aspect + resolution.',
         sQuality: 'Quality parameter (empty = omit)',
+        sRequestType: 'Request type',
+        sRequestTypeStream: 'Streaming (recommended)',
+        sRequestTypeJson: 'Non-streaming',
+        sRequestTypeHint: 'Streaming receives the image as it is produced and is more resilient on slow endpoints; a gateway that explicitly rejects streaming is retried once without it.',
         sOutput: 'Output folder',
+        visionTitle: 'Product recognition model (optional)',
+        visionHint: 'By default the Harness built-in vision model reads product photos and size charts. You can add several OpenAI-compatible vision endpoints and switch between them freely. Product recognition always carries the strict 12-feature product-lock rules.',
+        visionBuiltinName: 'Harness built-in vision model (default)',
+        visionBuiltinHint: 'Uses the current Harness model; no endpoint or key needed',
+        visionAddProfile: '+ Add vision endpoint',
+        visionDeleteProfile: 'Delete this vision endpoint',
+        newVisionProfileName: 'Vision endpoint',
+        visionBaseUrl: 'Endpoint',
+        visionBaseUrlHint: 'OpenAI compatible, include /v1, e.g. https://api.openai.com/v1',
+        visionModel: 'Model',
+        visionModelHint: 'Must accept image input, e.g. gpt-4o-mini / qwen-vl-max / gemini-2.0-flash',
+        needBaseUrl: 'Fill in the endpoint first, then fetch models',
+        visionKey: 'Vision API key',
+        visionUsingCustom: 'Using a third-party vision model',
+        visionUsingBuiltin: 'Using the Harness built-in vision model',
         pick: 'Browse',
         save: 'Save settings',
         saved: 'Saved',
@@ -485,10 +549,32 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------------- constants
     // Model framing: whether the face is visible and where the frame starts.
+    // `clause` is the normal description; `hard` / `review` / `forbidden` turn the
+    // choice into a hard composition constraint that is stated twice (head and
+    // tail of the prompt). A single mid-sentence hint gets outvoted by the long
+    // product-fidelity block, which is exactly why the crop used to be ignored.
     const SHOW = [
-      { id: 'face', zh: '露脸', en: 'show face', prompt: "the model's face is fully visible with a natural expression, looking at the camera" },
-      { id: 'neck', zh: '从脖子处裁切', en: 'crop at neck', prompt: "framed from the neck down, the model's head is cropped out of the frame, no face visible" },
-      { id: 'chest', zh: '从胸部处裁切', en: 'crop at chest', prompt: "framed from the chest down, the model's head and neck are cropped out of the frame, no face visible" },
+      {
+        id: 'face', zh: '露脸', en: 'show face',
+        clause: '模特面部完整可见，自然表情，看向镜头',
+        hard: '',
+        review: '',
+        forbidden: '',
+      },
+      {
+        id: 'neck', zh: '从脖子处裁切', en: 'crop at neck',
+        clause: '画面从颈部以下取景，头部裁出画面，不露脸',
+        hard: '【构图硬约束｜优先级高于画面美观】画面从颈部以下取景：模特头部完全位于画面之外，画面顶部即模特颈部，不得出现头部、面部、五官与发型；商品仍须从腰头到裤脚完整入镜',
+        review: '【构图复核｜优先级高于商品完整展示与画面美观｜违反即不合格】成片不得出现模特头部与面部，头部入镜即视为错误输出。',
+        forbidden: '画面出现模特头部、面部、五官、眼睛、鼻子、嘴巴、发型',
+      },
+      {
+        id: 'chest', zh: '从胸部处裁切', en: 'crop at chest',
+        clause: '画面从胸部以下取景，头颈均裁出画面，不露脸',
+        hard: '【构图硬约束｜优先级高于画面美观】画面从胸部以下取景：模特头部与颈部完全位于画面之外，画面顶部即模特胸部，不得出现头部、颈部、面部、五官与发型；商品仍须从腰头到裤脚完整入镜',
+        review: '【构图复核｜优先级高于商品完整展示与画面美观｜违反即不合格】成片不得出现模特头部、颈部与面部，头颈入镜即视为错误输出。',
+        forbidden: '画面出现模特头部、颈部、面部、五官、眼睛、鼻子、嘴巴、发型',
+      },
     ]
     // All ratios are available at 1K / 2K / 4K; the resolution chip below the
     // aspect chips selects which size table is used for the request.
@@ -573,7 +659,9 @@ window.__ModuleLoader__.load({
 
     function weightRangeForWaist(waist) {
       const value = Number(waist)
-      if (!Number.isFinite(value)) return null
+      // Number(null) === 0: a blank/missing waist must read as "no suggestion",
+      // not extrapolate below the first sample and print negative weights.
+      if (!Number.isFinite(value) || value <= 0) return null
       const points = WEIGHT_SAMPLES
       for (let index = 1; index < points.length; index += 1) {
         if (value <= points[index].waist) {
@@ -594,6 +682,15 @@ window.__ModuleLoader__.load({
         low: last.low + slopeLow * (value - last.waist),
         high: last.high + slopeHigh * (value - last.waist),
       }
+    }
+
+
+    /** Size-chart cell text round-trips through the input: blank -> null, a
+     *  partial numeric text kept exactly ("72.", "-"), invalid text ignored. */
+    function normalizeSizeCellText(text) {
+      const normalized = String(text === undefined || text === null ? '' : text).replace(',', '.').trim()
+      if (normalized !== '' && !/^-?\d*(?:\.\d*)?$/.test(normalized)) return undefined
+      return normalized === '' ? null : normalized
     }
 
 
@@ -647,6 +744,16 @@ window.__ModuleLoader__.load({
 
     function optionLabel(option, lang) {
       return lang === 'zh' ? option.zh : option.en
+    }
+
+    /** Requested image size is always derived from the selected aspect ratio and
+     *  resolution (there is no stored default size any more). */
+    function resolveOutputSpec(form) {
+      const ratio = findOption(RATIOS, form.ratio)
+      const resolution = findOption(RESOLUTIONS, form.resolution)
+      const raw = (ratio.sizes && ratio.sizes[resolution.id]) || ratio.sizes['2k'] || ''
+      const [width, height] = String(raw).split('x')
+      return { ratio, resolution, size: raw, width, height }
     }
 
     function loadJson(key, fallback) {
@@ -756,9 +863,101 @@ window.__ModuleLoader__.load({
     const LEGACY_NEGATIVE_ZH_V1 = '模糊、低质量、水印、文字、多余手指、变形的手、严重畸变'
     const LEGACY_POSES = ['front', 'side', 'walk', 'sit', 'close']
 
+    // Injected at the very front of the product description: the uploaded
+    // reference photo stays the primary source, the description is only a
+    // supplemental detail check and must never be used alone to generate.
+    const PRODUCT_DESC_PREFIX = '上传的商品参考图为最高优先级，本段只做细节补充验证，严禁直接使用本段描述直接生成。'
+
+    function withDescPrefix(text) {
+      const value = String(text || '').trim()
+      if (!value) return ''
+      if (value.indexOf(PRODUCT_DESC_PREFIX) === 0) return value
+      // A partially deleted leading note is repaired, never duplicated: find the
+      // longest shared beginning and treat it as the damaged note.
+      let shared = 0
+      while (shared < PRODUCT_DESC_PREFIX.length && shared < value.length && value.charAt(shared) === PRODUCT_DESC_PREFIX.charAt(shared)) {
+        shared += 1
+      }
+      if (shared >= 6) {
+        const rest = value.slice(shared).replace(/^\s+/, '')
+        return rest ? `${PRODUCT_DESC_PREFIX}\n${rest}` : PRODUCT_DESC_PREFIX
+      }
+      return `${PRODUCT_DESC_PREFIX}\n${value}`
+    }
+
+    function stripDescPrefix(text) {
+      const value = String(text || '').trim()
+      if (value.indexOf(PRODUCT_DESC_PREFIX) === 0) {
+        return value.slice(PRODUCT_DESC_PREFIX.length).trim()
+      }
+      return value
+    }
+
+    // The 12 dimensions the vision model reports; recognition results are kept
+    // as a JSON object with these keys (the Host normalises the model answer).
+    const PRODUCT_DESC_LABELS = [
+      '颜色',
+      '面料材质',
+      '整体版型',
+      '尺寸比例',
+      '腰头结构',
+      '门襟结构',
+      '口袋结构',
+      '缝线与拼接',
+      '水洗与磨损',
+      '特殊设计',
+      '裤腿与裤脚',
+      '结构相对位置',
+    ]
+
+    /** Returns the description body as JSON. A JSON body is kept verbatim; an
+     *  older recognition result saved as 「维度：描述」 lines is upgraded to JSON
+     *  so descriptions extracted before the JSON format existed do not need a
+     *  new (paid) vision call. Manual prose descriptions are left untouched. */
+    function normalizeDescriptionBody(text) {
+      let body = stripDescPrefix(text)
+      if (!body) return ''
+      const fenced = body.match(/^```(?:json)?\s*([\s\S]*?)```$/i)
+      if (fenced) body = fenced[1].trim()
+      if (!body) return ''
+      if (body.charAt(0) === '{') return body
+      const entries = []
+      for (const line of body.split(/\r?\n/)) {
+        const match = line.trim().match(/^([^：:]{1,24})[：:]\s*(.+)$/u)
+        if (match) entries.push({ key: match[1].trim(), value: match[2].trim() })
+      }
+      // Only a recognisable legacy recognition result (most of the 12 dimensions
+      // present) is upgraded; hand-written structured notes stay untouched.
+      if (entries.filter(entry => PRODUCT_DESC_LABELS.indexOf(entry.key) >= 0).length < 8) return body
+      const object = {}
+      for (const label of PRODUCT_DESC_LABELS) {
+        const found = entries.find(entry => entry.key === label)
+        object[label] = found ? found.value : '无法判断'
+      }
+      for (const entry of entries) {
+        if (PRODUCT_DESC_LABELS.indexOf(entry.key) < 0 && !Object.prototype.hasOwnProperty.call(object, entry.key)) {
+          object[entry.key] = entry.value
+        }
+      }
+      return JSON.stringify(object, null, 2)
+    }
+
     function loadForm() {
       const saved = loadJson(LS_FORM, {})
-      const merged = { ...DEFAULT_FORM, ...saved }
+      const source = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+      const merged = { ...DEFAULT_FORM, ...source }
+      // Coerce persisted values: buildPrompt calls .trim() on the text fields and
+      // the chips assume known ids, so a hand-edited/corrupted localStorage entry
+      // must not be able to crash the whole workbench page.
+      for (const key of ['desc', 'modelPrompt', 'backgroundPrompt', 'extraPrompt', 'negative']) {
+        if (typeof merged[key] !== 'string') merged[key] = DEFAULT_FORM[key]
+      }
+      if (typeof merged.pose !== 'string') merged.pose = ''
+      if (!RATIOS.some(item => item.id === merged.ratio)) merged.ratio = DEFAULT_FORM.ratio
+      if (!RESOLUTIONS.some(item => item.id === merged.resolution)) merged.resolution = DEFAULT_FORM.resolution
+      if (!SHOW.some(item => item.id === merged.show)) merged.show = DEFAULT_FORM.show
+      merged.strictFidelity = merged.strictFidelity !== false
+      merged.includeNegative = merged.includeNegative === true
       // Upgrade an untouched old negative prompt to the expanded Chinese one
       // unless the user has customised it.
       if (merged.negative === LEGACY_NEGATIVE || merged.negative === LEGACY_NEGATIVE_ZH_V1) {
@@ -769,21 +968,62 @@ window.__ModuleLoader__.load({
       return merged
     }
 
+    /** Persisted collections are filtered so a bad entry cannot break rendering. */
+    function loadPoses() {
+      const value = loadJson(LS_POSES, [])
+      return (Array.isArray(value) ? value : []).filter(item => (
+        item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.prompt === 'string'
+      ))
+    }
+
+    function loadTemplates() {
+      const value = loadJson(LS_TEMPLATES, [])
+      return (Array.isArray(value) ? value : []).filter(item => (
+        item && typeof item.id === 'string' && typeof item.name === 'string' && item.form && typeof item.form === 'object'
+      )).map(item => ({ ...item, form: { ...item.form } }))
+    }
+
+    function loadReusablePrompts() {
+      const value = loadJson(LS_PROMPTS, [])
+      return (Array.isArray(value) ? value : []).filter(item => (
+        item && typeof item.id === 'string' && typeof item.text === 'string'
+      )).map(item => ({ ...item, kind: item.kind || 'style' }))
+    }
+
     function settingsToDraft(value) {
       if (!value) return null
+      const vision = value.vision || {}
       return {
         activeId: value.activeId,
         outputDir: value.outputDir || '',
         profiles: (value.profiles || []).map(profile => ({ ...profile, apiKey: '', clearKey: false })),
+        vision: {
+          activeId: vision.activeId || '',
+          profiles: (Array.isArray(vision.profiles) ? vision.profiles : []).map(profile => ({
+            ...profile,
+            apiKey: '',
+            clearKey: false,
+          })),
+        },
       }
     }
 
-    // Chinese prompt fragments for the option chips (the generated prompt is Chinese).
-    const ZH_SHOW = {
-      face: '模特面部完整可见，自然表情，看向镜头',
-      neck: '画面从颈部以下取景，头部裁出画面，不露脸',
-      chest: '画面从胸部以下取景，头颈均裁出画面，不露脸',
+    /** Vision draft -> /settings payload (empty apiKey keeps the saved key). */
+    function visionDraftToPayload(vision) {
+      if (!vision) return undefined
+      return {
+        activeId: vision.activeId || '',
+        profiles: (Array.isArray(vision.profiles) ? vision.profiles : []).map(profile => ({
+          id: profile.id,
+          name: profile.name,
+          baseUrl: profile.baseUrl || '',
+          model: profile.model || '',
+          apiKey: profile.apiKey || undefined,
+          clearApiKey: profile.clearKey === true,
+        })),
+      }
     }
+
     const ZH_RATIO = {
       square: '方形构图',
       portrait: '竖版时装构图',
@@ -810,13 +1050,20 @@ window.__ModuleLoader__.load({
      * @param fidelityText strict-product-fidelity module (editable in Settings)
      */
     function buildPrompt(form, hasModelSheet, hasProductRef, hasSceneRef, customPoses, fidelityText) {
-      const description = form.desc && form.desc.trim() ? form.desc.trim() : ''
+      const rawDescription = form.desc && form.desc.trim() ? form.desc.trim() : ''
+      // The reference photo is primary: with product photos attached the
+      // description is prefixed with the "supplement only" note. Without
+      // references that note is removed again so it never claims a missing photo.
+      const description = hasProductRef ? withDescPrefix(rawDescription) : stripDescPrefix(rawDescription)
       const modelPrompt = form.modelPrompt && form.modelPrompt.trim() ? form.modelPrompt.trim() : ''
       const backgroundPrompt = form.backgroundPrompt && form.backgroundPrompt.trim() ? form.backgroundPrompt.trim() : ''
       // A model appears when a model sheet is uploaded or described by text.
       const hasModel = Boolean(hasModelSheet) || Boolean(modelPrompt)
       const customPose = (customPoses || []).find(item => item && item.id === form.pose)
       const poseText = customPose && customPose.prompt ? customPose.prompt.trim() : ''
+      // Framing (face visible / crop at neck / crop at chest) only means anything
+      // when a model is part of the shot; otherwise the studio hides the chips.
+      const framing = hasModel ? findOption(SHOW, form.show) : null
 
       const parts = []
       if (hasModelSheet) {
@@ -827,6 +1074,11 @@ window.__ModuleLoader__.load({
       } else {
         parts.push('专业电商商品摄影')
       }
+
+      // The hard framing rule goes first so later style/product clauses cannot
+      // bury it; it is repeated after the fidelity block as a "review" line, and
+      // the crop options add a dedicated forbidden line at the very end.
+      if (framing && framing.hard) parts.push(framing.hard)
 
       if (hasProductRef) {
         parts.push(
@@ -841,21 +1093,29 @@ window.__ModuleLoader__.load({
       }
 
       if (poseText) parts.push(poseText)
-      if (hasModel) parts.push(ZH_SHOW[form.show] || ZH_SHOW.face)
+      if (framing && framing.clause) parts.push(framing.clause)
       let background = ''
       if (hasSceneRef) background = '背景采用场景参考图中的环境，保持其背景、道具与氛围'
       if (backgroundPrompt) background = background ? `${background}，${backgroundPrompt}` : `背景：${backgroundPrompt}`
       parts.push(background || '干净的纯色影棚背景')
       if (form.extraPrompt && form.extraPrompt.trim()) parts.push(form.extraPrompt.trim())
       if (ZH_RATIO[form.ratio]) parts.push(ZH_RATIO[form.ratio])
+      // The aspect ratio + resolution chips decide the real output size; write
+      // that spec into the prompt as well so the model composes for it.
+      const outputSpec = resolveOutputSpec(form)
+      if (outputSpec.width && outputSpec.height) {
+        parts.push(`输出规格：${outputSpec.ratio.zh}，成图尺寸 ${outputSpec.width}×${outputSpec.height} 像素（${outputSpec.resolution.zh}）`)
+      }
       parts.push('85mm 镜头拍摄，f/2.8 大光圈，画面清晰锐利，面料纹理与缝线细节清晰；专业修图，商业级品质，真实摄影质感，高分辨率')
       parts.push('商品颜色、材质、版型与结构以商品参考图为准')
 
       let text = `${parts.filter(Boolean).join('，')}。`
       if (form.strictFidelity) text += `\n\n${fidelityText || FIDELITY_MODULE}`
+      if (framing && framing.review) text += `\n${framing.review}`
       if (form.includeNegative && form.negative && form.negative.trim()) {
         text += `\n【严禁出现】${form.negative.trim()}。`
       }
+      if (framing && framing.forbidden) text += `\n【构图禁止】${framing.forbidden}。`
       return text
     }
 
@@ -884,10 +1144,59 @@ window.__ModuleLoader__.load({
       return `${pad(date.getHours())}:${pad(date.getMinutes())}`
     }
 
+    const BALANCE_ERROR_RE = /insufficient balance|余额不足|欠费|额度不足|quota exceeded|exceeded your current quota/i
+    const AUTH_ERROR_RE = /invalid api key|unauthorized|无效的令牌|鉴权失败|authentication failed|authorization failed|接口返回 401|接口返回 402|HTTP 401|HTTP 402/i
+
+    /** Only errors that will fail *every* queued job are fatal: exhausted
+     *  balance/quota or a rejected key. A plain 403 is often a per-image content
+     *  moderation refusal (or a failed image download), so it must never cancel
+     *  the rest of the queue - otherwise one bad job looks like a queue-wide
+     *  failure. */
+    function isFatalApiError(message) {
+      const raw = String(message || '')
+      return BALANCE_ERROR_RE.test(raw) || AUTH_ERROR_RE.test(raw)
+    }
+
+    /** Turn a raw provider/Host error into an actionable Chinese explanation. */
+    function friendlyApiError(message, t) {
+      const raw = String(message || '').trim()
+      if (BALANCE_ERROR_RE.test(raw)) return t('errBalance')
+      if (AUTH_ERROR_RE.test(raw)) return t('errAuth')
+      if (/429|rate limit|too many requests|请求过于频繁|限流/i.test(raw)) return t('errRate')
+      if (/timeout|超时|aborted/i.test(raw)) return t('errTimeout')
+      return raw || t('queueError')
+    }
+
     function formatDuration(ms) {
       const value = Number(ms) || 0
       if (value <= 0) return ''
       return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`
+    }
+
+    /** Debounce helper: every schedule() restarts the timer, so `action` only runs
+     *  once after the last change. Used to auto-extract the product description
+     *  five seconds after the reference photos stop changing. */
+    function createDebouncedAction(delayMs, action) {
+      let timer = null
+      return {
+        schedule(waitMs) {
+          if (timer) clearTimeout(timer)
+          const wait = typeof waitMs === 'number' && waitMs >= 0 ? waitMs : delayMs
+          timer = setTimeout(() => {
+            timer = null
+            action()
+          }, wait)
+        },
+        cancel() {
+          if (timer) {
+            clearTimeout(timer)
+            timer = null
+          }
+        },
+        pending() {
+          return timer !== null
+        },
+      }
     }
 
     function formatDate(date, lang) {
@@ -1030,6 +1339,13 @@ window.__ModuleLoader__.load({
             )
           }),
         ),
+        props.hint
+          ? h(
+              'div',
+              { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', marginTop: 7, lineHeight: 1.55 } },
+              props.hint,
+            )
+          : null,
       )
     }
 
@@ -1232,7 +1548,7 @@ window.__ModuleLoader__.load({
         {
           type: 'button',
           onClick: props.onOpen,
-          title: props.name,
+          title: props.title || props.name,
           style: {
             padding: 0,
             border: '1px solid var(--dsw-alias-border-l1)',
@@ -1309,21 +1625,44 @@ window.__ModuleLoader__.load({
       const [saving, setSaving] = useState(false)
       const [draft, setDraft] = useState(null)
       const [productRefs, setProductRefs] = useState([])
-      const [customPoses, setCustomPoses] = useState(() => {
-        const value = loadJson(LS_POSES, [])
-        return Array.isArray(value) ? value : []
-      })
+      const [customPoses, setCustomPoses] = useState(loadPoses)
       const [fidelityText, setFidelityText] = useState(loadFidelityText)
-      const [templates, setTemplates] = useState(() => {
-        const value = loadJson(LS_TEMPLATES, [])
-        return Array.isArray(value) ? value : []
-      })
-      const [reusablePrompts, setReusablePrompts] = useState(() => {
-        const value = loadJson(LS_PROMPTS, [])
-        return (Array.isArray(value) ? value : []).map(item => ({ ...item, kind: item.kind || 'style' }))
-      })
+      const [templates, setTemplates] = useState(loadTemplates)
+      const [reusablePrompts, setReusablePrompts] = useState(loadReusablePrompts)
       const [promptPage, setPromptPage] = useState(false)
       const [extracting, setExtracting] = useState(false)
+
+      // Auto product-info extraction: user changes to the reference photos are
+      // debounced by AUTO_EXTRACT_DELAY_MS; refs give the timer the current busy
+      // state and handler without re-creating the timer on every render.
+      const extractingRef = useRef(false)
+      const extractHandlerRef = useRef(null)
+      const productMutationVersionRef = useRef(0)
+      const extractedVersionRef = useRef(0)
+      const autoExtractSchedulerRef = useRef(null)
+      // Timestamps used to avoid overwriting a description the user edited after
+      // changing the photos (or while extraction is in flight).
+      const photoChangedAtRef = useRef(0)
+      const descTouchedAtRef = useRef(0)
+      // Always-current snapshots for async handlers (setState is asynchronous).
+      const productRefsRef = useRef(productRefs)
+      productRefsRef.current = productRefs
+      const persistQueueRef = useRef(Promise.resolve())
+      const addingFilesRef = useRef(false)
+      const tabEffectReadyRef = useRef(false)
+      if (autoExtractSchedulerRef.current === null) {
+        autoExtractSchedulerRef.current = createDebouncedAction(AUTO_EXTRACT_DELAY_MS, () => {
+          // Nothing to do when this exact photo set has already been extracted.
+          if (productMutationVersionRef.current <= extractedVersionRef.current) return
+          // The user typed a description after changing the photos: keep it.
+          if (descTouchedAtRef.current > photoChangedAtRef.current) return
+          if (extractingRef.current) {
+            autoExtractSchedulerRef.current.schedule(1000)
+            return
+          }
+          if (extractHandlerRef.current) extractHandlerRef.current({ auto: true })
+        })
+      }
 
       const persistPoses = useCallback(next => {
         setCustomPoses(next)
@@ -1345,6 +1684,9 @@ window.__ModuleLoader__.load({
           const value = json.settings || null
           setSettings(value)
           setDraft(prev => prev || settingsToDraft(value))
+          // The host reports a damaged/unreadable settings file: surface it so
+          // the user knows saves are paused and a .bak recovery is available.
+          if (json.warning) setNotice({ kind: 'error', text: String(json.warning) })
         } catch (error) {
           setNotice({ kind: 'error', text: error.message })
         }
@@ -1365,8 +1707,20 @@ window.__ModuleLoader__.load({
       }, [])
 
       useEffect(() => {
+        // The mount effect above already loaded settings/history; this effect
+        // only refreshes history when the user actually switches tabs.
+        if (!tabEffectReadyRef.current) {
+          tabEffectReadyRef.current = true
+          return
+        }
         if (tab === 'studio' || tab === 'home') refreshHistory()
       }, [tab, refreshHistory])
+
+      // If the first settings fetch failed (host still starting), visiting the
+      // Settings tab retries instead of leaving a permanent "…" placeholder.
+      useEffect(() => {
+        if (tab === 'settings' && !draft) refreshSettings()
+      }, [tab, draft, refreshSettings])
 
       // Restore persisted product reference photos (kept until the user removes them).
       useEffect(() => {
@@ -1438,6 +1792,21 @@ window.__ModuleLoader__.load({
         setForm(prev => ({ ...prev, ...patch }))
       }, [])
 
+      // Keep the stored description consistent with the current photo set, but
+      // only when the photo set changes: running on every keystroke made the
+      // controlled textarea eat trailing spaces/newlines and re-add a deleted
+      // prefix. buildPrompt still enforces the note for the generation prompt.
+      useEffect(() => {
+        const current = form.desc || ''
+        if (!current.trim()) return
+        const next = productRefs.length > 0
+          ? withDescPrefix(normalizeDescriptionBody(current))
+          : stripDescPrefix(current)
+        if (next !== current) update({ desc: next })
+        // form.desc is intentionally not a dependency: this is a photo-set migration.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [productRefs.length])
+
       // ------------------------------------------------------------ templates
       // A template snapshots the text/canvas settings (never the reference
       // images) so a full look can be re-applied with one click.
@@ -1472,11 +1841,15 @@ window.__ModuleLoader__.load({
         if (next.pose && !customPoses.some(item => item.id === next.pose)) next.pose = ''
         if (!RATIOS.some(item => item.id === next.ratio)) next.ratio = DEFAULT_FORM.ratio
         if (!RESOLUTIONS.some(item => item.id === next.resolution)) next.resolution = DEFAULT_FORM.resolution
+        // A template may carry the reference-first note from a previous photo set.
+        if (typeof next.desc === 'string') {
+          next.desc = productRefs.length > 0 ? withDescPrefix(next.desc) : stripDescPrefix(next.desc)
+        }
         update(next)
         setTemplatePage(false)
         setPosePage(false)
         setNotice({ kind: 'ok', text: t('templateApplied') })
-      }, [update, customPoses, t])
+      }, [update, customPoses, productRefs.length, t])
 
       const updateTemplate = useCallback((id, patch) => {
         const next = templates.map(template => (
@@ -1557,9 +1930,108 @@ window.__ModuleLoader__.load({
         if (form.pose === id) update({ pose: '' })
       }, [customPoses, form.pose, persistPoses, update])
 
-      const persistProductRefs = useCallback(async refs => {
+      // Persist the whole product-photo set through a promise chain: two quick
+      // upload/remove actions must land on the host in the order they happened,
+      // otherwise an older snapshot could overwrite a newer one on disk.
+      const persistProductRefs = useCallback(refs => {
+        const payload = refs.map(item => ({
+          dataBase64: item.dataBase64,
+          mediaType: item.mediaType,
+          name: item.name,
+        }))
+        persistQueueRef.current = persistQueueRef.current.then(async () => {
+          try {
+            await api('/ref/products', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ references: payload, clear: payload.length === 0 }),
+            })
+          } catch (error) {
+            setNotice({ kind: 'error', text: `商品图本次可用，但未能持久保存：${error.message}` })
+          }
+        })
+        return persistQueueRef.current
+      }, [])
+
+      const handleProductFiles = useCallback(async files => {
+        const list = Array.from(files || [])
+        if (list.length === 0) return
+        if (addingFilesRef.current) {
+          setNotice({ kind: 'error', text: '正在处理上一批图片，请稍候再选' })
+          return
+        }
+        addingFilesRef.current = true
         try {
-          await api('/ref/products', {
+          const loaded = []
+          for (const file of list) loaded.push(await loadReferenceFile(file))
+          const current = productRefsRef.current || []
+          const seen = new Set(current.map(item => item.dataBase64))
+          const fresh = []
+          for (const item of loaded) {
+            if (!item || seen.has(item.dataBase64)) continue
+            seen.add(item.dataBase64)
+            fresh.push(item)
+          }
+          if (fresh.length === 0) {
+            setNotice({ kind: 'ok', text: '这些图片已在商品参考图里' })
+            return
+          }
+          if (current.length + fresh.length > 4) {
+            setNotice({ kind: 'error', text: '商品参考图最多 4 张，本次未添加，请减少选择数量' })
+            return
+          }
+          const next = [...current, ...fresh]
+          setProductRefs(next)
+          persistProductRefs(next)
+          productMutationVersionRef.current += 1
+          photoChangedAtRef.current = Date.now()
+          autoExtractSchedulerRef.current.schedule()
+        } catch (error) {
+          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+        } finally {
+          addingFilesRef.current = false
+        }
+      }, [loadReferenceFile, persistProductRefs])
+
+      const handleRemoveProduct = useCallback(index => {
+        if (addingFilesRef.current) {
+          setNotice({ kind: 'error', text: '正在处理上一批图片，请稍候再操作' })
+          return
+        }
+        const current = productRefsRef.current || []
+        const next = current.filter((_, position) => position !== index)
+        setProductRefs(next)
+        persistProductRefs(next)
+        productMutationVersionRef.current += 1
+        photoChangedAtRef.current = Date.now()
+        if (next.length > 0) autoExtractSchedulerRef.current.schedule()
+        else autoExtractSchedulerRef.current.cancel()
+      }, [persistProductRefs])
+
+      const handleDescriptionChange = useCallback(value => {
+        descTouchedAtRef.current = Date.now()
+        update({ desc: value })
+      }, [update])
+
+      // One-click product analysis: send the uploaded product photos to the
+      // workbench Host, which asks the harness LLM for the structured key
+      // elements (colour, fabric, cut, trims, ...) used by the description.
+      const handleExtractDescription = useCallback(async (options = {}) => {
+        const auto = options && options.auto === true
+        if (extracting) return
+        const refs = productRefsRef.current || []
+        if (refs.length === 0) {
+          setNotice({ kind: 'error', text: t('extractNeedRef') })
+          return
+        }
+        // Remember which photo revision this run covers: a successful extraction
+        // satisfies the pending auto-extract for that same revision.
+        const extractionVersion = productMutationVersionRef.current
+        const startedAt = Date.now()
+        setExtracting(true)
+        setNotice(null)
+        try {
+          const json = await api('/extract', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -1570,72 +2042,42 @@ window.__ModuleLoader__.load({
               })),
             }),
           })
-        } catch (error) {
-          setNotice({ kind: 'error', text: `商品图本次可用，但未能持久保存：${error.message}` })
-        }
-      }, [])
-
-      const handleProductFiles = useCallback(async files => {
-        const list = Array.from(files || [])
-        if (list.length === 0) return
-        try {
-          const loaded = []
-          for (const file of list) {
-            loaded.push(await loadReferenceFile(file))
-          }
-          const merged = [...productRefs, ...loaded]
-          if (merged.length > 4) {
-            setNotice({ kind: 'error', text: '商品参考图最多 4 张' })
-          } else {
-            setNotice(null)
-          }
-          const next = merged.slice(0, 4)
-          setProductRefs(next)
-          persistProductRefs(next)
-        } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
-        }
-      }, [loadReferenceFile, productRefs, persistProductRefs])
-
-      const handleRemoveProduct = useCallback(index => {
-        const next = productRefs.filter((_, position) => position !== index)
-        setProductRefs(next)
-        persistProductRefs(next)
-      }, [productRefs, persistProductRefs])
-
-      // One-click product analysis: send the uploaded product photos to the
-      // workbench Host, which asks the harness LLM for the structured key
-      // elements (colour, fabric, cut, trims, ...) used by the description.
-      const handleExtractDescription = useCallback(async () => {
-        if (extracting) return
-        if (productRefs.length === 0) {
-          setNotice({ kind: 'error', text: t('extractNeedRef') })
-          return
-        }
-        setExtracting(true)
-        setNotice(null)
-        try {
-          const json = await api('/extract', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              references: productRefs.map(item => ({
-                dataBase64: item.dataBase64,
-                mediaType: item.mediaType,
-                name: item.name,
-              })),
-            }),
-          })
           const text = String(json.text || '').trim()
           if (!text) throw new Error(t('extractEmpty'))
-          update({ desc: text })
+          // The photo set changed (or was cleared) while the model was running:
+          // the answer describes images that are no longer attached.
+          if (productMutationVersionRef.current !== extractionVersion || (productRefsRef.current || []).length === 0) {
+            setNotice({ kind: 'error', text: '图片已变化，本次识别结果已丢弃，请重新提取' })
+            return
+          }
+          // Automatic extraction must not overwrite text typed during the call.
+          if (auto && descTouchedAtRef.current > startedAt) {
+            extractedVersionRef.current = Math.max(extractedVersionRef.current, extractionVersion)
+            return
+          }
+          update({ desc: withDescPrefix(normalizeDescriptionBody(text)) })
+          extractedVersionRef.current = Math.max(extractedVersionRef.current, extractionVersion)
           setNotice({ kind: 'ok', text: t('extractDone') })
         } catch (error) {
           setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
         } finally {
           setExtracting(false)
         }
-      }, [extracting, productRefs, update, t])
+      }, [extracting, update, t])
+
+      // The debounced auto-extract timer reads the latest busy state/handler
+      // through refs, so it never fires with a stale closure.
+      useEffect(() => {
+        extractingRef.current = extracting
+      }, [extracting])
+
+      useEffect(() => {
+        extractHandlerRef.current = handleExtractDescription
+      }, [handleExtractDescription])
+
+      useEffect(() => () => {
+        if (autoExtractSchedulerRef.current) autoExtractSchedulerRef.current.cancel()
+      }, [])
 
       const updateJob = (id, patch) => {
         setJobs(prev => prev.map(job => (job.id === id ? { ...job, ...patch } : job)))
@@ -1676,12 +2118,36 @@ window.__ModuleLoader__.load({
             payload: undefined,
           })
         } catch (error) {
+          const raw = String(error && error.message ? error.message : error)
+          const message = friendlyApiError(raw, t)
+          const fatal = isFatalApiError(raw)
           updateJob(job.id, {
             status: 'error',
             finishedAt: Date.now(),
-            error: String(error && error.message ? error.message : error),
+            error: message,
+            errorRaw: raw,
             payload: undefined,
           })
+          // A balance/auth failure would fail every remaining job too: cancel the
+          // rest of the queue and explain it once instead of spamming identical errors.
+          if (fatal && queueRef.current.length > 0) {
+            const pending = queueRef.current.splice(0)
+            pending.forEach(item => updateJob(item.id, {
+              status: 'error',
+              finishedAt: Date.now(),
+              error: message,
+              errorRaw: raw,
+              payload: undefined,
+            }))
+            setNotice({ kind: 'error', text: t('queueStopped') })
+          } else if (fatal) {
+            // Nothing was actually cancelled; keep the real error visible.
+            setNotice({ kind: 'error', text: message })
+          } else {
+            // Non-fatal failures (moderation, bad size, one-off provider error)
+            // otherwise live only inside a job row that can scroll out of view.
+            setNotice({ kind: 'error', text: message })
+          }
         } finally {
           activeJobsRef.current = Math.max(0, activeJobsRef.current - 1)
           startQueuedJobs()
@@ -1700,11 +2166,14 @@ window.__ModuleLoader__.load({
           setNotice({ kind: 'error', text: t('needPrompt') })
           return
         }
-        if (settings ? !settings.hasApiKey : true) {
+        // While settings are still loading, let the host decide (it reports a
+        // clear missing-key error); only block when we know the key is absent.
+        if (settings && !settings.hasApiKey) {
           setNotice({ kind: 'error', text: t('needKey') })
           return
         }
-        const pendingCount = jobs.filter(job => job.status === 'queued' || job.status === 'running').length
+        // The queue refs are the authority; the jobs state can lag a fast click.
+        const pendingCount = activeJobsRef.current + queueRef.current.length
         if (pendingCount >= 12) {
           setNotice({ kind: 'error', text: t('queueFull') })
           return
@@ -1712,19 +2181,16 @@ window.__ModuleLoader__.load({
         const references = productRefs
           .filter(Boolean)
           .map(item => ({ dataBase64: item.dataBase64, mediaType: item.mediaType, name: item.name }))
-        // Follow the separator style configured on this profile ("2048*2048" vs
-        // "2048x2048"), since some OpenAI-compatible relays accept only one form.
-        const separator = settings && typeof settings.size === 'string' && settings.size.indexOf('*') >= 0 ? '*' : 'x'
-        const ratioOption = findOption(RATIOS, form.ratio)
-        const resolutionOption = findOption(RESOLUTIONS, form.resolution)
-        const sizeSource = (ratioOption.sizes && ratioOption.sizes[resolutionOption.id]) || ratioOption.sizes['2k'] || '2048x2048'
-        const size = String(sizeSource).replace('x', separator)
+        // The requested size is always computed from the aspect-ratio +
+        // resolution chips; there is no stored default size any more.
+        const outputSpec = resolveOutputSpec(form)
+        const size = outputSpec.size || '2048x2048'
         const job = {
           id: `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
           status: 'queued',
           createdAt: Date.now(),
           prompt: text,
-          ratioLabel: `${optionLabel(ratioOption, lang)} · ${optionLabel(resolutionOption, lang)}`,
+          ratioLabel: `${optionLabel(outputSpec.ratio, lang)} · ${optionLabel(outputSpec.resolution, lang)}`,
           referenceCount: references.length,
           payload: {
             prompt: text,
@@ -1783,6 +2249,7 @@ window.__ModuleLoader__.load({
 
       const handleSaveSettings = useCallback(async payload => {
         if (!draft || saving) return
+        const sentDraft = draft
         setSaving(true)
         setNotice(null)
         try {
@@ -1794,11 +2261,12 @@ window.__ModuleLoader__.load({
               name: profile.name,
               baseUrl: profile.baseUrl,
               model: profile.model,
-              size: profile.size,
               quality: profile.quality,
+              requestType: profile.requestType === 'json' ? 'json' : 'stream',
               apiKey: profile.apiKey || undefined,
               clearApiKey: profile.clearKey === true,
             })),
+            vision: visionDraftToPayload(draft.vision),
           }
           const json = await api('/settings', {
             method: 'POST',
@@ -1806,7 +2274,9 @@ window.__ModuleLoader__.load({
             body: JSON.stringify(body),
           })
           setSettings(json.settings || null)
-          setDraft(settingsToDraft(json.settings))
+          // Do not discard edits typed while the request was in flight: only
+          // re-seed the draft when it is still the snapshot that was sent.
+          setDraft(current => (current === sentDraft ? settingsToDraft(json.settings) : current))
           setNotice({ kind: 'ok', text: t('saved') })
           refreshHistory()
         } catch (error) {
@@ -1828,6 +2298,9 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ activeId: id }),
           })
           setSettings(json.settings || null)
+          if (json.settings && json.settings.activeId) {
+            setDraft(prev => (prev ? { ...prev, activeId: json.settings.activeId } : prev))
+          }
           const name = json.settings && json.settings.name ? json.settings.name : ''
           setNotice({ kind: 'ok', text: name ? `${t('activeNow')}：${name}` : t('saved') })
         } catch (error) {
@@ -1835,17 +2308,37 @@ window.__ModuleLoader__.load({
         }
       }, [t])
 
+      // Vision endpoints affect extraction only, but switching one should take
+      // effect immediately just like the image profiles (otherwise Studio keeps
+      // extracting with the previously saved endpoint until Save).
+      const handleActivateVision = useCallback(async id => {
+        try {
+          const json = await api('/settings', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ vision: { activeId: id } }),
+          })
+          setSettings(json.settings || null)
+          const savedActive = json.settings && json.settings.vision ? json.settings.vision.activeId : ''
+          setDraft(prev => (prev ? { ...prev, vision: { ...(prev.vision || {}), activeId: savedActive } } : prev))
+          setNotice({ kind: 'ok', text: t('saved') })
+        } catch (error) {
+          setNotice({ kind: 'error', text: error.message })
+        }
+      }, [t])
+
       const handleTest = useCallback(async override => {
-        setTestState({ state: 'testing' })
+        const profileId = override && override.profileId ? override.profileId : null
+        setTestState({ state: 'testing', profileId })
         try {
           const json = await api('/test', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(override || {}),
           })
-          setTestState({ state: json.ok ? 'ok' : 'fail', message: json.message || json.error || '' })
+          setTestState({ state: json.ok ? 'ok' : 'fail', message: json.message || json.error || '', profileId })
         } catch (error) {
-          setTestState({ state: 'fail', message: error.message })
+          setTestState({ state: 'fail', message: error.message, profileId })
         }
       }, [])
 
@@ -1986,11 +2479,13 @@ window.__ModuleLoader__.load({
             jobs, onClearFinishedJobs: handleClearFinishedJobs,
             onPreview: setPreview,
             onOpenStudioHistory: refreshHistory,
+            onRevealOutput: handleReveal,
             needKey: settings ? !settings.hasApiKey : true,
             onOpenSettings: () => setTab('settings'),
             productRefs,
             onProductFiles: handleProductFiles,
             onRemoveProduct: handleRemoveProduct,
+            onDescriptionChange: handleDescriptionChange,
             customPoses,
             onOpenPoseLibrary: () => setPosePage(true),
             extracting,
@@ -2005,6 +2500,14 @@ window.__ModuleLoader__.load({
             referenceCount,
             activeName: settings && settings.name ? settings.name : '',
             activeModel: settings && settings.model ? settings.model : '',
+            visionLabel: (() => {
+              const vision = settings && settings.vision
+              const profiles = vision && Array.isArray(vision.profiles) ? vision.profiles : []
+              const profile = profiles.find(item => item.id === vision.activeId)
+              if (!profile) return t('visionBadgeBuiltin')
+              if (!profile.baseUrl || !profile.model) return t('visionIncomplete')
+              return `${t('visionBadgeCustom')} · ${profile.model}`
+            })(),
           })
         }
       } else if (tab === 'size') {
@@ -2013,6 +2516,7 @@ window.__ModuleLoader__.load({
         body = h(SettingsTab, {
           lang, t, settings, draft, setDraft, saving,
           onSave: handleSaveSettings, onActivate: handleActivateProfile,
+          onActivateVision: handleActivateVision,
           onTest: handleTest, testState,
           accentId, onAccent: handleAccent,
           fidelityText,
@@ -2308,7 +2812,8 @@ window.__ModuleLoader__.load({
       const suggestions = chart.rows.map((row, index) => {
         const rank = sizeRank(row.size)
         const heightMid = 165 + 5 * (rank === null ? index : rank)
-        const waist = waistColumn && row.values ? Number(row.values[waistColumn.key]) : NaN
+        const rawWaist = waistColumn && row.values ? row.values[waistColumn.key] : null
+        const waist = rawWaist === null || rawWaist === undefined || rawWaist === '' ? NaN : Number(rawWaist)
         const weight = weightRangeForWaist(waist)
         return {
           heightLow: heightMid - 5,
@@ -2415,7 +2920,7 @@ window.__ModuleLoader__.load({
           ...chart.columns.map(column => ({
             width: measureWidth,
             zh: column.name,
-            en: `${SIZE_COLUMN_EN[column.name] || column.name.toUpperCase()} (cm)`,
+            en: `${SIZE_COLUMN_EN[column.name] || String(column.name || '').toUpperCase()} (cm)`,
           })),
         ]
 
@@ -2457,7 +2962,7 @@ window.__ModuleLoader__.load({
           context.textBaseline = 'middle'
           context.fillStyle = '#161616'
           context.font = '700 46px "Microsoft YaHei","PingFang SC",sans-serif'
-          context.fillText(row.size || '', x + columns[0].width / 2, rowY + rowHeight / 2 - (suggestion.waist ? 16 : 0))
+          context.fillText(row.size || '', x + columns[0].width / 2, rowY + rowHeight / 2 - (suggestion.waist ? 16 : 0), columns[0].width - 14)
           if (suggestion.waist) {
             context.fillStyle = '#8a8f94'
             context.font = '500 24px "Microsoft YaHei","PingFang SC",sans-serif'
@@ -2635,12 +3140,16 @@ window.__ModuleLoader__.load({
         setChart(prev => ({ ...prev, rows: prev.rows.map(row => (row.id === id ? { ...row, size: label } : row)) }))
       }
       const updateCell = (id, key, text) => {
-        const normalized = String(text).replace(',', '.').trim()
-        const value = normalized === '' ? null : Number(normalized)
+        // Keep the raw number text while editing: parsing to Number on every
+        // keystroke turned "72." into 72 (dot lost) and "0.5" into 5.
+        const value = normalizeSizeCellText(text)
+        if (value === undefined) return
         setChart(prev => ({
           ...prev,
           rows: prev.rows.map(row => (
-            row.id === id ? { ...row, values: { ...(row.values || {}), [key]: Number.isFinite(value) ? value : null } } : row
+            row.id === id
+              ? { ...row, values: { ...(row.values || {}), [key]: value } }
+              : row
           )),
         }))
       }
@@ -2668,8 +3177,10 @@ window.__ModuleLoader__.load({
           if (!blob) return
           const url = URL.createObjectURL(blob)
           const link = document.createElement('a')
+          const now = new Date()
+          const pad = value => String(value).padStart(2, '0')
           link.href = url
-          link.download = `size-chart-${new Date().toISOString().slice(0, 10)}.png`
+          link.download = `size-chart-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.png`
           link.click()
           window.setTimeout(() => URL.revokeObjectURL(url), 2000)
           setNotice({ kind: 'ok', text: t('sizeDownloaded') })
@@ -2950,14 +3461,16 @@ window.__ModuleLoader__.load({
         lang, t, form, update, promptValue, setCustomPrompt,
         onCopy, onGenerate, results, history, lastTiming, onPreview, needKey, onOpenSettings,
         jobs, onClearFinishedJobs,
+        onRevealOutput,
         productRefs,
         onProductFiles, onRemoveProduct,
+        onDescriptionChange,
         referenceCount,
         customPoses, onOpenPoseLibrary,
         extracting, onExtractDescription,
         templates, onSaveTemplate, onApplyTemplate, onOpenTemplateLibrary,
         prompts, onSavePrompt, onOpenPromptLibrary,
-        activeName, activeModel,
+        activeName, activeModel, visionLabel,
       } = props
 
       const [templateNaming, setTemplateNaming] = useState(false)
@@ -2992,11 +3505,12 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const chip = (key, labelKey, options) =>
+      const chip = (key, labelKey, options, hintText) =>
         h(ChipGroup, {
           key,
           lang,
           label: t(labelKey),
+          hint: hintText || '',
           options,
           value: form[key],
           onChange: value => update({ [key]: value }),
@@ -3345,7 +3859,7 @@ window.__ModuleLoader__.load({
         null,
         h(SectionHead, { title: t('studioModelTitle') }),
         poseSection,
-        form.modelPrompt && String(form.modelPrompt).trim() ? chip('show', 'fShow', SHOW) : null,
+        form.modelPrompt && String(form.modelPrompt).trim() ? chip('show', 'fShow', SHOW, t('showHint')) : null,
       )
 
       const ratioOption = findOption(RATIOS, form.ratio)
@@ -3408,10 +3922,26 @@ window.__ModuleLoader__.load({
           h('textarea', {
             value: form.desc,
             placeholder: t('fDescPh'),
-            onChange: event => update({ desc: event.target.value }),
-            rows: Math.min(14, Math.max(2, String(form.desc || '').split('\n').length + 1)),
+            onChange: event => onDescriptionChange(event.target.value),
+            rows: Math.min(22, Math.max(2, String(form.desc || '').split('\n').length + 1)),
             style: { ...INPUT_STYLE, resize: 'vertical' },
           }),
+          h(
+            'div',
+            { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', marginTop: 7, lineHeight: 1.55 } },
+            `${visionLabel ? `${visionLabel} · ` : ''}${t('lockHint')}`,
+            visionLabel
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: onOpenSettings,
+                    style: { border: 'none', background: 'transparent', padding: '0 0 0 8px', color: 'var(--dsw-alias-brand-primary)', cursor: 'pointer', fontSize: 11 },
+                  },
+                  t('visionConfigure'),
+                )
+              : null,
+          ),
         ),
         h(Hairline),
         h(
@@ -3562,7 +4092,7 @@ window.__ModuleLoader__.load({
               `${job.ratioLabel}${job.referenceCount ? ` · ${job.referenceCount} ${t('refsCount')}` : ''} · ${jobStatusText(job)}${job.status === 'queued' ? ` · ${jobElapsedSeconds(job)}s` : ''}${job.timings && job.timings.totalMs ? ` · ${formatDuration(job.timings.totalMs)}` : ''}`,
             ),
             job.status === 'error' && job.error
-              ? h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', marginTop: 2, lineHeight: 1.4 } }, job.error)
+              ? h('div', { title: job.errorRaw || job.error, style: { fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', marginTop: 2, lineHeight: 1.4 } }, job.error)
               : null,
           ),
         )
@@ -3596,11 +4126,31 @@ window.__ModuleLoader__.load({
           : null,
       )
 
+      // Tooltip for a generated/history thumbnail: which profile + model made it,
+      // and whether the host had to retry a gateway that echoed the reference.
+      const itemTitle = item => {
+        const meta = item && item.meta
+        if (!meta) return item && item.name ? item.name : ''
+        const lines = []
+        const head = [meta.profileName, meta.model].filter(Boolean).join(' · ')
+        if (head) lines.push(head)
+        lines.push(`${meta.mode === 'edit' ? t('modeEdit') : t('modeText')}${meta.refCount ? ` · ${meta.refCount} ${t('refsCount')}` : ''}`)
+        if (meta.echoRetried) lines.push(t('echoRetried'))
+        if (meta.prompt) lines.push(String(meta.prompt).slice(0, 180))
+        return lines.join('\n')
+      }
+
       const grid = items =>
         h(
           'div',
           { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 } },
-          items.map(item => h(Thumb, { key: item.name || item.url, src: item.url, name: item.name, onOpen: () => onPreview(item.url) })),
+          items.map(item => h(Thumb, {
+            key: item.name || item.url,
+            src: item.url,
+            name: item.name,
+            title: itemTitle(item),
+            onOpen: () => onPreview(item.url),
+          })),
         )
 
       const emptyRow = h('div', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', padding: '12px 0', textAlign: 'center' } }, t('resultEmpty'))
@@ -3630,7 +4180,12 @@ window.__ModuleLoader__.load({
           'div',
           { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 } },
           h('div', { style: { fontSize: 14, fontWeight: 600, letterSpacing: -0.1 } }, t('historyTitle')),
-          h('button', { type: 'button', onClick: props.onOpenStudioHistory, style: textButton({ fontSize: 12 }) }, t('refresh')),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h('button', { type: 'button', onClick: props.onOpenStudioHistory, style: textButton({ fontSize: 12 }) }, t('refresh')),
+            h('button', { type: 'button', onClick: onRevealOutput, style: textButton({ fontSize: 12 }) }, t('saveDir')),
+          ),
         ),
         (history.items || []).length === 0 ? emptyRow : grid((history.items || []).slice(0, 9)),
       )
@@ -4288,16 +4843,134 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------- settings tab
     function SettingsTab(props) {
       const {
-        lang, t, settings, draft, setDraft, saving, onSave, onActivate, onTest, testState,
+        lang, t, settings, draft, setDraft, saving, onSave, onActivate, onActivateVision, onTest, testState,
         accentId, onAccent, fidelityText, fidelityDefault, onSaveFidelity, onResetFidelity,
       } = props
       const [models, setModels] = useState(null)
       const [modelState, setModelState] = useState(null)
+      const [visionModels, setVisionModels] = useState(null)
+      const [visionModelState, setVisionModelState] = useState(null)
       const [fidelityEditing, setFidelityEditing] = useState(false)
       const [fidelityDraft, setFidelityDraft] = useState('')
+      const [confirmDelete, setConfirmDelete] = useState(null)
       const profiles = draft ? draft.profiles : []
       const active = draft ? profiles.find(profile => profile.id === draft.activeId) || profiles[0] || null : null
       const fidelityEdited = typeof fidelityText === 'string' && fidelityText !== fidelityDefault
+      const vision = (draft && draft.vision) || { activeId: '', profiles: [] }
+      const visionProfiles = Array.isArray(vision.profiles) ? vision.profiles : []
+      const activeVisionProfile = visionProfiles.find(profile => profile.id === vision.activeId) || null
+      // Async model discovery must never land on a profile the user switched
+      // away from: each request records its target id and a sequence number.
+      const activeIdRef = useRef(active ? active.id : null)
+      const visionIdRef = useRef(activeVisionProfile ? activeVisionProfile.id : null)
+      activeIdRef.current = active ? active.id : null
+      visionIdRef.current = activeVisionProfile ? activeVisionProfile.id : null
+      const modelRequestRef = useRef(0)
+      const visionRequestRef = useRef(0)
+
+      /** First click arms a destructive action, second click within 4 s runs it. */
+      const armDelete = which => {
+        if (confirmDelete === which) {
+          setConfirmDelete(null)
+          return true
+        }
+        setConfirmDelete(which)
+        window.setTimeout(() => setConfirmDelete(current => (current === which ? null : current)), 4000)
+        return false
+      }
+
+      const updateVision = useCallback(patch => {
+        setDraft(prev => (prev ? { ...prev, vision: { ...(prev.vision || {}), ...patch } } : prev))
+      }, [setDraft])
+
+      const updateVisionProfile = useCallback(patch => {
+        setDraft(prev => {
+          if (!prev) return prev
+          const currentVision = prev.vision || { activeId: '', profiles: [] }
+          const current = (currentVision.profiles || []).find(profile => profile.id === currentVision.activeId)
+          if (!current) return prev
+          return {
+            ...prev,
+            vision: {
+              ...currentVision,
+              profiles: (currentVision.profiles || []).map(profile => (
+                profile.id === current.id ? { ...profile, ...patch } : profile
+              )),
+            },
+          }
+        })
+      }, [setDraft])
+
+      const selectVisionProfile = useCallback(id => {
+        setVisionModels(null)
+        setVisionModelState(null)
+        updateVision({ activeId: id })
+        // A switch between already-saved endpoints takes effect immediately (like
+        // the image profile chips); a brand-new profile waits for Save.
+        const saved = id === '' || Boolean(
+          settings && settings.vision && Array.isArray(settings.vision.profiles)
+          && settings.vision.profiles.some(profile => profile.id === id),
+        )
+        if (saved && onActivateVision) onActivateVision(id)
+      }, [settings, updateVision, onActivateVision])
+
+      const addVisionProfile = useCallback(() => {
+        const first = visionProfiles[0]
+        const profile = {
+          id: `v-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+          name: t('newVisionProfileName'),
+          baseUrl: first ? first.baseUrl : '',
+          model: '',
+          apiKey: '',
+          hasApiKey: false,
+          apiKeyTail: '',
+          clearKey: false,
+        }
+        setVisionModels(null)
+        setVisionModelState(null)
+        updateVision({ activeId: profile.id, profiles: [...visionProfiles, profile] })
+      }, [visionProfiles, updateVision, t])
+
+      const removeVisionProfile = useCallback(() => {
+        if (!activeVisionProfile) return
+        const remaining = visionProfiles.filter(profile => profile.id !== activeVisionProfile.id)
+        setVisionModels(null)
+        setVisionModelState(null)
+        updateVision({ activeId: remaining.length > 0 ? remaining[0].id : '', profiles: remaining })
+      }, [activeVisionProfile, visionProfiles, updateVision])
+
+      const fetchVisionModels = useCallback(async () => {
+        if (!activeVisionProfile) return
+        const targetId = activeVisionProfile.id
+        if (!activeVisionProfile.baseUrl || !activeVisionProfile.baseUrl.trim()) {
+          setVisionModelState({ state: 'fail', message: t('needBaseUrl') })
+          return
+        }
+        const requestId = visionRequestRef.current + 1
+        visionRequestRef.current = requestId
+        setVisionModelState({ state: 'loading' })
+        setVisionModels(null)
+        try {
+          const json = await api('/models', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              source: 'vision',
+              profileId: targetId,
+              baseUrl: activeVisionProfile.baseUrl,
+              apiKey: activeVisionProfile.apiKey || undefined,
+            }),
+          })
+          if (visionRequestRef.current !== requestId || visionIdRef.current !== targetId) return
+          const ids = Array.isArray(json.ids) ? json.ids : []
+          setVisionModels(ids)
+          setVisionModelState({ state: 'ok', count: ids.length })
+        } catch (error) {
+          if (visionRequestRef.current !== requestId || visionIdRef.current !== targetId) return
+          setVisionModels(null)
+          setVisionModelState({ state: 'fail', message: String(error && error.message ? error.message : error) })
+        }
+      }, [activeVisionProfile, t])
 
       const updateProfile = useCallback(patch => {
         setDraft(prev => {
@@ -4327,8 +5000,8 @@ window.__ModuleLoader__.load({
           name: t('newProfileName'),
           baseUrl: current ? current.baseUrl : 'https://api.openai.com/v1',
           model: current ? current.model : 'gpt-image-1',
-          size: current ? current.size : '1024x1024',
           quality: current ? current.quality : '',
+          requestType: current ? current.requestType : 'stream',
           apiKey: '',
           hasApiKey: false,
           apiKeyTail: '',
@@ -4350,22 +5023,45 @@ window.__ModuleLoader__.load({
 
       const fetchModels = useCallback(async () => {
         if (!active) return
+        const targetId = active.id
+        if (!String(active.baseUrl || '').trim()) {
+          setModelState({ state: 'fail', message: t('needBaseUrl') })
+          return
+        }
+        const requestId = modelRequestRef.current + 1
+        modelRequestRef.current = requestId
         setModelState({ state: 'loading' })
+        setModels(null)
         try {
           const json = await api('/models', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ profileId: active.id, baseUrl: active.baseUrl, apiKey: active.apiKey || undefined }),
+            body: JSON.stringify({ profileId: targetId, baseUrl: active.baseUrl, apiKey: active.apiKey || undefined }),
           })
+          if (modelRequestRef.current !== requestId || activeIdRef.current !== targetId) return
           const ids = json.ids || []
           setModels(ids)
           setModelState({ state: 'ok', count: ids.length })
-          if (ids.length > 0 && ids.indexOf(active.model) < 0) updateProfile({ model: ids[0] })
+          // Fill only a blank model. The endpoint list can be partial, and a
+          // deliberately typed model must never be replaced silently.
+          if (ids.length > 0) {
+            setDraft(prev => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                profiles: prev.profiles.map(profile => {
+                  if (profile.id !== targetId || String(profile.model || '').trim()) return profile
+                  return { ...profile, model: ids[0] }
+                }),
+              }
+            })
+          }
         } catch (error) {
+          if (modelRequestRef.current !== requestId || activeIdRef.current !== targetId) return
           setModels(null)
           setModelState({ state: 'fail', message: String(error && error.message ? error.message : error) })
         }
-      }, [active, updateProfile])
+      }, [active, setDraft, t])
 
       const runTest = useCallback(() => {
         if (!active) return
@@ -4382,13 +5078,29 @@ window.__ModuleLoader__.load({
             name: profile.name,
             baseUrl: profile.baseUrl,
             model: profile.model,
-            size: profile.size,
             quality: profile.quality,
+            requestType: profile.requestType === 'json' ? 'json' : 'stream',
             apiKey: profile.apiKey || undefined,
             clearApiKey: profile.clearKey === true,
           })),
+          vision: visionDraftToPayload(draft.vision),
         })
       }, [draft, onSave])
+
+      const visionOptionStyle = active => ({
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 2,
+        padding: '8px 12px',
+        borderRadius: 10,
+        cursor: 'pointer',
+        textAlign: 'left',
+        fontSize: 12,
+        border: active ? '1px solid var(--dsw-alias-brand-primary)' : '1px solid var(--dsw-alias-border-l1)',
+        background: active ? 'color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent)' : 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-primary)',
+      })
 
       if (!draft || !active) {
         return h(
@@ -4465,6 +5177,19 @@ window.__ModuleLoader__.load({
           ),
           h(Field, { label: t('sBaseUrl') }, h('input', { value: active.baseUrl || '', onChange: e => updateProfile({ baseUrl: e.target.value }), style: INPUT_STYLE })),
           h(
+            Field,
+            { label: t('sRequestType'), hint: t('sRequestTypeHint') },
+            h(Segmented, {
+              lang,
+              value: active.requestType === 'json' ? 'json' : 'stream',
+              onChange: id => updateProfile({ requestType: id }),
+              options: [
+                { id: 'stream', zh: t('sRequestTypeStream'), en: t('sRequestTypeStream') },
+                { id: 'json', zh: t('sRequestTypeJson'), en: t('sRequestTypeJson') },
+              ],
+            }),
+          ),
+          h(
             'div',
             { style: { display: 'flex', gap: 12, flexWrap: 'wrap' } },
             h(
@@ -4538,7 +5263,6 @@ window.__ModuleLoader__.load({
                   : null,
               ),
             ),
-            h('div', { style: { flex: '1 1 220px' } }, h(Field, { label: t('sSize'), hint: t('sSizeHint') }, h('input', { value: active.size || '', onChange: e => updateProfile({ size: e.target.value }), style: INPUT_STYLE }))),
           ),
           h(
             Field,
@@ -4564,8 +5288,8 @@ window.__ModuleLoader__.load({
                 t('sClearKey'),
               ),
               h('button', { type: 'button', onClick: runTest, disabled: testState && testState.state === 'testing', style: ghostButton({ padding: '6px 12px', fontSize: 12 }) },
-                testState && testState.state === 'testing' ? t('testing') : t('test')),
-              testState
+                testState && testState.state === 'testing' && (!testState.profileId || testState.profileId === active.id) ? t('testing') : t('test')),
+              testState && (!testState.profileId || testState.profileId === active.id)
                 ? h(
                     'span',
                     {
@@ -4650,7 +5374,9 @@ window.__ModuleLoader__.load({
                 'button',
                 {
                   type: 'button',
-                  onClick: removeProfile,
+                  onClick: () => {
+                    if (armDelete('image')) removeProfile()
+                  },
                   disabled: profiles.length <= 1,
                   style: ghostButton({
                     padding: '8px 12px',
@@ -4661,13 +5387,226 @@ window.__ModuleLoader__.load({
                     cursor: profiles.length <= 1 ? 'not-allowed' : 'pointer',
                   }),
                 },
-                t('deleteProfile'),
+                confirmDelete === 'image' ? t('confirmRemove') : t('deleteProfile'),
               ),
               profiles.length <= 1
                 ? h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } }, t('lastProfileWarn'))
                 : null,
             ),
           ),
+        ),
+        h(SectionTitle, { title: t('visionTitle') }),
+        h(
+          Card,
+          { style: { marginBottom: 20 } },
+          h('div', { style: { fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', marginBottom: 12, lineHeight: 1.65 } }, t('visionHint')),
+          h(
+            'div',
+            { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 } },
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: () => selectVisionProfile(''),
+                style: visionOptionStyle(!activeVisionProfile),
+              },
+              h('div', { style: { fontSize: 12.5, fontWeight: 600 } }, t('visionBuiltinName')),
+              h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } }, t('visionBuiltinHint')),
+            ),
+            visionProfiles.map(profile =>
+              h(
+                'button',
+                {
+                  key: profile.id,
+                  type: 'button',
+                  title: profile.baseUrl,
+                  onClick: () => selectVisionProfile(profile.id),
+                  style: visionOptionStyle(Boolean(activeVisionProfile && activeVisionProfile.id === profile.id)),
+                },
+                h('div', { style: { fontSize: 12.5, fontWeight: 600 } }, profile.name || t('newVisionProfileName')),
+                h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } }, profile.model || profile.baseUrl || '—'),
+              ),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: addVisionProfile,
+                style: {
+                  padding: '8px 12px',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  border: '1px dashed var(--dsw-alias-border-l2)',
+                  background: 'transparent',
+                  color: 'var(--dsw-alias-label-secondary)',
+                },
+              },
+              t('visionAddProfile'),
+            ),
+          ),
+          activeVisionProfile
+            ? h(
+                'div',
+                null,
+                h(
+                  Field,
+                  { label: t('profileName') },
+                  h('input', {
+                    value: activeVisionProfile.name || '',
+                    placeholder: t('profileNamePh'),
+                    onChange: event => updateVisionProfile({ name: event.target.value }),
+                    style: INPUT_STYLE,
+                  }),
+                ),
+                h(
+                  Field,
+                  { label: t('visionBaseUrl'), hint: t('visionBaseUrlHint') },
+                  h('input', {
+                    value: activeVisionProfile.baseUrl || '',
+                    placeholder: 'https://api.openai.com/v1',
+                    onChange: event => updateVisionProfile({ baseUrl: event.target.value }),
+                    style: INPUT_STYLE,
+                  }),
+                ),
+                h(
+                  Field,
+                  {
+                    label: t('visionModel'),
+                    hint: t('visionModelHint'),
+                    extra: h(
+                      'button',
+                      {
+                        type: 'button',
+                        onClick: fetchVisionModels,
+                        disabled: visionModelState && visionModelState.state === 'loading',
+                        style: ghostButton({ padding: '3px 9px', fontSize: 11.5 }),
+                      },
+                      visionModelState && visionModelState.state === 'loading' ? t('sFetching') : `⟳ ${t('sFetchModels')}`,
+                    ),
+                  },
+                  h('input', {
+                    value: activeVisionProfile.model || '',
+                    placeholder: 'gpt-4o-mini',
+                    onChange: event => updateVisionProfile({ model: event.target.value }),
+                    style: INPUT_STYLE,
+                  }),
+                  visionModelState
+                    ? h(
+                        'div',
+                        {
+                          style: {
+                            fontSize: 11,
+                            marginTop: 5,
+                            wordBreak: 'break-word',
+                            color: visionModelState.state === 'fail' ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-label-secondary)',
+                          },
+                        },
+                        visionModelState.state === 'ok'
+                          ? `${visionModelState.count} ${t('sModelsFound')}`
+                          : visionModelState.state === 'fail'
+                            ? visionModelState.message
+                            : '',
+                      )
+                    : null,
+                  visionModels
+                    ? h(
+                        'div',
+                        { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, maxHeight: 112, overflowY: 'auto' } },
+                        visionModels.map(id =>
+                          h(
+                            'button',
+                            {
+                              key: id,
+                              type: 'button',
+                              title: id,
+                              onClick: () => updateVisionProfile({ model: id }),
+                              style: {
+                                padding: '4px 9px',
+                                borderRadius: 8,
+                                fontSize: 11.5,
+                                cursor: 'pointer',
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                border: activeVisionProfile.model === id ? '1px solid var(--dsw-alias-brand-primary)' : '1px solid var(--dsw-alias-border-l1)',
+                                background: activeVisionProfile.model === id ? 'var(--dsw-alias-brand-primary)' : 'transparent',
+                                color: activeVisionProfile.model === id ? '#ffffff' : 'var(--dsw-alias-label-primary)',
+                              },
+                            },
+                            id,
+                          ),
+                        ),
+                      )
+                    : null,
+                ),
+                h(
+                  Field,
+                  {
+                    label: t('visionKey'),
+                    hint: activeVisionProfile.hasApiKey
+                      ? `${t('sKeyPhSet')}${activeVisionProfile.apiKeyTail ? `（••••${activeVisionProfile.apiKeyTail}）` : ''}`
+                      : undefined,
+                  },
+                  h('input', {
+                    type: 'password',
+                    value: activeVisionProfile.apiKey || '',
+                    placeholder: activeVisionProfile.hasApiKey ? t('sKeyPhSet') : t('sKeyPhEmpty'),
+                    onChange: event => updateVisionProfile({ apiKey: event.target.value }),
+                    style: INPUT_STYLE,
+                    autoComplete: 'off',
+                  }),
+                  h(
+                    'label',
+                    { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--dsw-alias-label-secondary)', marginTop: 8, cursor: 'pointer' } },
+                    h('input', { type: 'checkbox', checked: activeVisionProfile.clearKey === true, onChange: event => updateVisionProfile({ clearKey: event.target.checked }) }),
+                    t('sClearKey'),
+                  ),
+                ),
+                h(
+                  'div',
+                  {
+                    style: {
+                      fontSize: 11.5,
+                      lineHeight: 1.6,
+                      marginTop: 2,
+                      color: activeVisionProfile.baseUrl && activeVisionProfile.model
+                        ? 'var(--dsw-alias-label-secondary)'
+                        : 'var(--dsw-alias-state-warn-primary)',
+                    },
+                  },
+                  activeVisionProfile.baseUrl && activeVisionProfile.model
+                    ? `${t('visionUsingCustom')} · ${activeVisionProfile.name || activeVisionProfile.model || '—'}`
+                    : t('visionIncomplete'),
+                ),
+                h(
+                  'div',
+                  { style: { display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' } },
+                  h('button', { type: 'button', onClick: saveAll, disabled: saving, style: { ...PRIMARY_BUTTON, opacity: saving ? 0.7 : 1 } }, saving ? '…' : t('save')),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () => {
+                        if (armDelete('vision')) removeVisionProfile()
+                      },
+                      style: ghostButton({ padding: '8px 12px', fontSize: 12.5, color: 'var(--dsw-alias-state-error-primary)' }),
+                    },
+                    confirmDelete === 'vision' ? t('confirmRemove') : t('visionDeleteProfile'),
+                  ),
+                ),
+              )
+            : h(
+                'div',
+                null,
+                h('div', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', lineHeight: 1.6 } }, t('visionUsingBuiltin')),
+                h(
+                  'div',
+                  { style: { display: 'flex', gap: 10, marginTop: 12, alignItems: 'center' } },
+                  h('button', { type: 'button', onClick: saveAll, disabled: saving, style: { ...PRIMARY_BUTTON, opacity: saving ? 0.7 : 1 } }, saving ? '…' : t('save')),
+                ),
+              ),
         ),
         h(SectionTitle, { title: t('builtinPromptsTitle') }),
         h(
