@@ -186,15 +186,16 @@ window.__ModuleLoader__.load({
         showHint: '选择后会以 JSON 构图约束覆盖提示词开头的构图段（只写入一次，不与中文提示词拼接）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
         fExtraPrompt: '自定义提示词（光线 / 风格等）',
         fExtraPromptPh: '例：柔和侧逆光，暖色调，杂志高级感，film grain，35mm 质感',
-        builtinPromptName: '男裤严格保真 V2.2（内置）',
+        builtinPromptName: '男裤严格保真 V2.3（内置 · JSON）',
         builtinPromptsTitle: '内置提示词',
-        builtinPromptsHint: '内置提示词在勾选「商品严格保真」时自动附加到生成提示词。点「编辑」可修改规则内容，修改后一直生效，也可随时恢复默认。',
+        builtinPromptsHint: '内置提示词在勾选「商品严格保真」时自动附加到生成提示词。规则现在是 JSON 格式（与构图约束同一写法，去掉了重复描述），点「编辑」可修改，保存时会校验 JSON 是否合法，也可随时恢复默认。',
+        fidelityJsonInvalid: '保真规则需为合法 JSON（对象格式）：请检查大括号、引号与逗号',
         edit: '编辑',
         restoreDefault: '恢复默认',
         fidelityModified: '已自定义',
         fidelityDefault: '默认',
-        strictFidelity: '商品严格保真（内置 V2.2）',
-        strictFidelityHint: '自动附加内置保真规则：锁定商品颜色、面料、版型、结构与细节；商品真实性高于画面美观度',
+        strictFidelity: '商品严格保真（内置 V2.3 · JSON）',
+        strictFidelityHint: '自动附加内置保真 JSON 规则：锁定商品颜色、面料、版型、结构与细节；商品真实性高于画面美观度',
         promptNameLabel: '提示词名称',
         promptNamePh: '例：暖调杂志风',
         saveName: '保存',
@@ -461,15 +462,16 @@ window.__ModuleLoader__.load({
         showHint: 'The selected framing replaces the composition segment at the start of the prompt with a single JSON block (never spliced into the text). The model may still drift slightly.',
         fExtraPrompt: 'Custom prompt (lighting / style)',
         fExtraPromptPh: 'e.g. soft rim light, warm tones, editorial mood, film grain',
-        builtinPromptName: 'Strict product fidelity V2.2 (built-in)',
+        builtinPromptName: 'Strict product fidelity V2.3 (built-in · JSON)',
         builtinPromptsTitle: 'Built-in prompts',
-        builtinPromptsHint: 'Built-in prompts are appended automatically while “Strict product fidelity” is on. Edit the rules here; changes stay in effect and can be restored to default at any time.',
+        builtinPromptsHint: 'Built-in prompts are appended automatically while “Strict product fidelity” is on. The rules are a JSON block now (same style as the framing constraint, duplicate wording removed); edits are validated as JSON on save and can be restored to default at any time.',
+        fidelityJsonInvalid: 'The fidelity rules must be a valid JSON object: check braces, quotes and commas',
         edit: 'Edit',
         restoreDefault: 'Restore default',
         fidelityModified: 'Customized',
         fidelityDefault: 'Default',
-        strictFidelity: 'Strict product fidelity (built-in V2.2)',
-        strictFidelityHint: 'Appends built-in fidelity rules locking color, fabric, cut, structure and details; product accuracy beats visual polish',
+        strictFidelity: 'Strict product fidelity (built-in V2.3 · JSON)',
+        strictFidelityHint: 'Appends the built-in fidelity JSON: color, fabric, cut, structure and details are locked; product accuracy beats visual polish',
         promptNameLabel: 'Prompt name',
         promptNamePh: 'e.g. warm editorial',
         saveName: 'Save',
@@ -723,11 +725,79 @@ window.__ModuleLoader__.load({
 
 
     /**
-     * Built-in strict product-fidelity module (V2.2, highest priority).
+     * Built-in strict product-fidelity module (V2.3, highest priority).
      * Appended to every prompt while the studio toggle stays on, so the model is
      * forced to reproduce the exact uploaded product instead of a look-alike.
+     * V2.3 is ONE JSON block, the same way the framing constraint is written, and
+     * every rule appears exactly once: the old prose repeated "be faithful" and
+     * "do not redesign" in five places, which cost tokens without adding meaning.
      */
-    const FIDELITY_MODULE = [
+    const FIDELITY_RULES = {
+      '保真规则': '商品严格保真 V2.3',
+      '优先级': '最高：商品保真是硬约束，优先于模特动作、服装搭配、摄影光影与画面美观度',
+      '唯一依据': '商品参考图（文字描述只补充细节，冲突时以参考图为准）',
+      '商品身份': {
+        '必须': '生成与参考图同一件商品，不是相似款式或重新设计，全部可辨认设计细节尽可能准确还原',
+        '禁止': ['替换商品', '增删、移动、合并、复制、镜像、简化既有特征或结构'],
+      },
+      '颜色与面料': {
+        '保持': [
+          '色相、饱和度与配色分布',
+          '面料材质、厚薄与光泽',
+          '织纹方向、粗细、密度与排列规律',
+          '原始水洗位置、褪色范围、磨白痕迹、磨损分布与颜色深浅关系',
+        ],
+        '允许': '真实光照产生的自然明暗、阴影与高光',
+        '禁止': ['偏色', '更换材质', '重绘纹理', '虚构水洗或磨损', '过度平滑', '过度锐化'],
+      },
+      '版型与比例': {
+        '保持': [
+          '腰、臀、裆、大腿、膝、小腿、裤脚之间的结构比例与宽松程度',
+          '裤型轮廓、裤腿宽度、裤长、裤脚开口与整体垂坠',
+        ],
+        '禁止': ['收窄、加宽、拉长或缩短', '改变原始裁剪结构'],
+      },
+      '结构拓扑': {
+        '保持': [
+          '腰头、腰带袢、纽扣、门襟、口袋、拼接布片、缝线、五金的数量、形状、连接关系与相对位置',
+          '几何拼接的线条走向、拐角形状与结构比例',
+          '各结构与设计细节相对腰头、口袋、裆部、膝部、裤脚的位置关系不变',
+        ],
+        '禁止': ['新增', '删除', '移动', '合并', '复制', '镜像', '简化'],
+      },
+      '特殊设计': {
+        '范围': '仅还原参考图中真实存在的破洞、刺绣、印花、拼布、条纹、铆钉等',
+        '保持': ['数量、位置、尺寸比例、轮廓形状、颜色与相互对应关系', '破洞的原始边缘磨损、内部可见材质与轮廓'],
+        '禁止': ['重新设计', '遗漏', '虚构', '数量、位置或镜像关系与参考图不符'],
+      },
+      '多参考图': {
+        '分工': {
+          '正面图': '确定正面设计',
+          '侧面图': '补充侧面结构',
+          '背面图': '确定背面设计',
+          '完整图': '确定整体版型与结构比例',
+          '局部特写': '补充可辨认细节',
+        },
+        '禁止': ['不同视角的结构被错误镜像、交换或混合', '背面专属设计出现在正面', '正面专属设计出现在背面', '缺少关键视角时虚构不可见的商品设计'],
+      },
+      '真实穿着': {
+        '要求': '商品自然穿着于人体，符合人体支撑、面料重量、重力与服装物理规律',
+        '允许': ['自然褶皱', '局部张力', '合理垂坠', '符合原始裤型的裤脚堆积', '符合原始版型的合理形变', '真实穿着造成的透视变化与面料弯曲'],
+        '区分': '永久设计（水洗、破洞、拼接）与穿着产生的临时褶皱必须区分',
+        '禁止': ['用褶皱遮挡、移动、扭曲或改变关键结构', '面料悬浮', '穿模', '异常拉伸', '结构错位', '违反重力规律的变形'],
+      },
+      '完整展示': {
+        '取景': '裤腰最顶部至裤脚最底部完整入镜',
+        '清晰': ['腰头、纽扣、腰带袢、门襟、口袋', '商品主要设计结构'],
+        '禁止': ['上衣、手部、配饰或其他物体遮挡关键结构', '为构图而裁切、隐藏或修改主要设计'],
+      },
+    }
+    // Compact in the prompt (one short line, like the framing block) but pretty
+    // in the editor, so the block stays cheap to send and still editable by hand.
+    const FIDELITY_MODULE = JSON.stringify(FIDELITY_RULES)
+    // V2.2 was prose. A stored copy that still matches it was never edited, so it
+    // is upgraded to V2.3 instead of pinning the old wording forever.
+    const LEGACY_FIDELITY_MODULE = [
       '【商品严格保真规则 V2.2 · 最高优先级】以商品参考图为唯一设计依据，必须生成同一件商品，而非相似款式或重新设计的商品；商品真实性始终高于画面美观度。',
       '商品身份：严格保持原始商品的颜色、材质、纹理、版型、尺寸比例、结构及全部可辨认的设计细节；禁止替换商品、重新设计、增加、删除或擅自修改任何原有商品特征。',
       '颜色与面料：严格保持原始色相、饱和度、配色分布、面料材质、织纹方向/粗细/密度/排列规律、厚薄视觉特征与光泽；保持原始水洗位置、褪色范围、磨白痕迹、磨损分布及颜色深浅关系；允许真实光照产生自然明暗、阴影与高光，但不得改变商品固有颜色、材质或永久设计；禁止偏色、材质替换、纹理重绘、虚构水洗磨损、过度平滑及过度锐化。',
@@ -1256,11 +1326,39 @@ window.__ModuleLoader__.load({
       'landscape-16-9': '横版 16:9 宽银幕构图，电影感时装取景',
     }
 
+    /** The fidelity rules are a JSON block now, so an edit has to stay parseable. */
+    function isFidelityJson(text) {
+      try {
+        const value = JSON.parse(String(text || '').trim())
+        return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+      } catch {
+        return false
+      }
+    }
+
+    /** What actually travels in the prompt: compact, no formatting whitespace. */
+    function compactFidelity(text) {
+      const value = String(text || '').trim()
+      if (!isFidelityJson(value)) return value
+      return JSON.stringify(JSON.parse(value))
+    }
+
+    /** What the Settings editor shows: the same object, one rule per line. */
+    function prettyFidelity(text) {
+      const value = String(text || '').trim()
+      if (!isFidelityJson(value)) return String(text || '')
+      return JSON.stringify(JSON.parse(value), null, 2)
+    }
+
     /** The strict-fidelity module can be customised from Settings; fall back to
-     *  the built-in V2.2 text when the user has not edited it. */
+     *  the built-in JSON rules when the user has not edited it. */
     function loadFidelityText() {
       const saved = loadJson(LS_FIDELITY, null)
-      if (saved && typeof saved.text === 'string' && saved.text.trim()) return saved.text
+      if (saved && typeof saved.text === 'string' && saved.text.trim()) {
+        // An untouched copy of the old prose module is upgraded to the JSON one.
+        if (saved.text.trim() === LEGACY_FIDELITY_MODULE.trim()) return FIDELITY_MODULE
+        return compactFidelity(saved.text)
+      }
       return FIDELITY_MODULE
     }
 
@@ -2147,11 +2245,18 @@ window.__ModuleLoader__.load({
       const referenceCount = productRefs.length
 
       const saveFidelityText = useCallback(text => {
-        const value = String(text || '').trim()
-        if (!value) return
+        const value = compactFidelity(text)
+        if (!value) return false
+        // The module is appended as one JSON block, so broken JSON is refused here
+        // instead of silently shipping half an object with the next prompt.
+        if (!isFidelityJson(value)) {
+          setNotice({ kind: 'error', text: t('fidelityJsonInvalid') })
+          return false
+        }
         setFidelityText(value)
         saveJson(LS_FIDELITY, { text: value })
         setNotice({ kind: 'ok', text: t('saved') })
+        return true
       }, [t])
 
       const resetFidelityText = useCallback(() => {
@@ -6192,7 +6297,7 @@ window.__ModuleLoader__.load({
                     {
                       type: 'button',
                       onClick: () => {
-                        setFidelityDraft(fidelityText)
+                        setFidelityDraft(prettyFidelity(fidelityText))
                         setFidelityEditing(true)
                       },
                       style: textButton(),
@@ -6215,7 +6320,7 @@ window.__ModuleLoader__.load({
                 h('textarea', {
                   value: fidelityDraft,
                   onChange: event => setFidelityDraft(event.target.value),
-                  rows: 14,
+                  rows: 20,
                   spellCheck: false,
                   style: {
                     ...INPUT_STYLE,
@@ -6234,7 +6339,7 @@ window.__ModuleLoader__.load({
                       type: 'button',
                       onClick: () => {
                         if (!fidelityDraft.trim()) return
-                        onSaveFidelity(fidelityDraft)
+                        if (onSaveFidelity(fidelityDraft) === false) return
                         setFidelityEditing(false)
                       },
                       style: { ...PRIMARY_BUTTON, padding: '7px 16px', fontSize: 12.5, opacity: fidelityDraft.trim() ? 1 : 0.55 },
@@ -6248,7 +6353,7 @@ window.__ModuleLoader__.load({
                   ),
                   h(
                     'button',
-                    { type: 'button', onClick: () => setFidelityDraft(fidelityDefault), style: textButton({ color: 'var(--dsw-alias-label-secondary)', fontWeight: 400 }) },
+                    { type: 'button', onClick: () => setFidelityDraft(prettyFidelity(fidelityDefault)), style: textButton({ color: 'var(--dsw-alias-label-secondary)', fontWeight: 400 }) },
                     t('restoreDefault'),
                   ),
                 ),
