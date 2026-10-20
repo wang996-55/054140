@@ -1,9 +1,9 @@
 {
   "name": "@local/personal-workbench",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
-  "description": "Personal workbench page for the DeepSeek Harness Web UI: dashboard, e-commerce model image studio, and appearance preferences.",
+  "description": "Personal workbench page for the DeepSeek Harness Web UI: dashboard, e-commerce model image studio with a 0-180 degree model-angle control, and appearance preferences.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

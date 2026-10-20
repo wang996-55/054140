@@ -28,6 +28,9 @@ window.__ModuleLoader__.load({
     const LS_FORM = 'pbw.form.v1'
     const LS_PROMPTS = 'pbw.prompts.v1'
     const LS_POSES = 'pbw.poses.v1'
+    // A mirror of both libraries as their previous version left them, so a
+    // cleanup that removed too much can still be recovered by hand.
+    const LS_DIRECTION_BACKUP = 'pbw.direction-cleanup.v1'
     const LS_ACCENT = 'pbw.accent.v1'
     const LS_FIDELITY = 'pbw.fidelity.v1'
     const LS_TEMPLATES = 'pbw.templates.v1'
@@ -193,7 +196,9 @@ window.__ModuleLoader__.load({
         promptImportInvalid: '导入失败：这个文件不是有效的提示词文件（请选择导出的 JSON）',
         promptImportEmpty: '这个文件里没有可导入的提示词',
         promptImportAllDup: '文件里的提示词都已存在，没有新增',
-        fPose: '姿态',
+        fPose: '动作',
+        fPoseAngle: '模特朝向角度',
+        fPoseAngleHint: '0° 正面 · 90° 侧面 · 180° 背面',
         fPoseCustom: '＋ 自定义动作',
         poseEmptyHint: '暂无自定义动作。点下方「＋ 自定义动作」进入动作库添加',
         poseName: '动作名称',
@@ -202,7 +207,6 @@ window.__ModuleLoader__.load({
         posePromptPh: '例：单手插兜，身体微侧，重心落在一条腿上',
         poseSave: '保存动作',
         poseEdit: '编辑',
-        poseListTitle: '已保存的动作',
         posePageTitle: '动作库',
         posePageHint: '在这里新增、编辑、删除自定义动作。保存后回到生图页，就能在「姿态」里选择使用。',
         poseBack: '← 返回生图',
@@ -212,13 +216,9 @@ window.__ModuleLoader__.load({
         poseDeleteConfirm: '确认删除？',
         poseSelected: '当前选中',
         poseSaved: '已保存',
-        poseGroupFront: '正面',
-        poseGroupSide: '侧面',
-        poseGroupBack: '背面',
-        poseOrient: '朝向分组',
-        poseOrientationHint: '分组只影响生图页「姿态」的排列，不改变动作内容',
-    poseOrientAuto: '由标题自动判断',
-    poseOrientAutoHint: '标题里写了正面 / 侧面 / 背面时以标题为准；想换分组就改标题',
+        poseDirectionNote: '动作只写身体怎么动；模特朝向统一由生图页的角度条控制',
+        directionCleaned: '已清理动作库与提示词库中的朝向字段，原数据已备份',
+        poseDirectionOnly: '这个动作只写了朝向，没有实际动作；朝向请用生图页的角度条设置',
         poseNew: '＋ 新建动作',
         poseImport: '导入',
         poseExport: '导出',
@@ -549,7 +549,9 @@ window.__ModuleLoader__.load({
         promptImportInvalid: 'Import failed: this is not a valid prompt file (choose an exported JSON)',
         promptImportEmpty: 'This file contains no importable prompts',
         promptImportAllDup: 'Every prompt in the file is already in the library',
-        fPose: 'Pose',
+        fPose: 'Action',
+        fPoseAngle: 'Model facing angle',
+        fPoseAngleHint: '0° front · 90° side · 180° back',
         fPoseCustom: '+ Custom pose',
         poseEmptyHint: 'No custom actions yet. Use “+ Custom pose” below to open the action library.',
         poseName: 'Action name',
@@ -558,7 +560,6 @@ window.__ModuleLoader__.load({
         posePromptPh: 'e.g. one hand in pocket, body slightly turned, weight on one leg',
         poseSave: 'Save action',
         poseEdit: 'Edit',
-        poseListTitle: 'Saved actions',
         posePageTitle: 'Action library',
         posePageHint: 'Add, edit and delete custom actions here. Saved actions are available under “Pose” on the studio page.',
         poseBack: '← Back to studio',
@@ -568,13 +569,9 @@ window.__ModuleLoader__.load({
         poseDeleteConfirm: 'Confirm delete?',
         poseSelected: 'Selected',
         poseSaved: 'Saved',
-        poseGroupFront: 'Front',
-        poseGroupSide: 'Side',
-        poseGroupBack: 'Back',
-        poseOrient: 'Orientation',
-        poseOrientationHint: 'The group only changes how poses are listed in the studio; the action itself is unchanged',
-    poseOrientAuto: 'detected from the title',
-    poseOrientAutoHint: 'The title decides the group when it says front, side or back; rename it to move the action',
+        poseDirectionNote: 'Describe only how the body moves; model facing comes from the studio angle slider',
+        directionCleaned: 'Removed stored facing directions from both libraries; the old data was backed up',
+        poseDirectionOnly: 'This action only states a facing direction; set the direction with the studio angle slider instead',
         poseNew: '+ New action',
         poseImport: 'Import',
         poseExport: 'Export',
@@ -1029,6 +1026,7 @@ window.__ModuleLoader__.load({
 
     const DEFAULT_FORM = {
       pose: '',
+      poseAngle: 0,
       show: 'neck',
       // A neck-to-ankle product shot cannot fit in a square: the model shrinks the
       // figure to make room, which is how a head creeps back into a "neck crop". A
@@ -1045,6 +1043,196 @@ window.__ModuleLoader__.load({
       // the blanket ban on 文字 is written as "overlaid text / watermark" instead.
       negative: '模糊、低清晰度、噪点、压缩痕迹、叠加文字与水印、多余手指、变形的手、多手多脚、严重畸变、背景错乱、背景杂乱、人物与背景融合、穿模、画面透灰不清晰、雾面、过曝、欠曝、色彩失真、偏色、材质错误、商品变形、过度锐化、塑料感',
       includeNegative: false,
+    }
+
+    // -------------------------------------------------- model direction cleanup
+    // Shared with the Host through client-direction.js: this block is copied
+    // verbatim (tests compare both) so the browser can clean saved libraries
+    // without a build step. Do not diverge the two copies.
+    // A clause describing which way the model faces, in Chinese or English.
+    // It has to carry a viewing/rotation cue, which is why a bare 正面 or 侧面 is
+    // not enough: those words also appear in product and garment descriptions.
+    const ZH_ORIENTATION_CLAUSE = /(?:模特|人物|主体|全身|画面中)?(?:背对镜头|背向镜头|面向镜头|正对镜头|朝向镜头|转身正对镜头|背对镜头站立|背部朝向镜头|背部正对镜头|背面朝向镜头|展示(?:清晰)?(?:模特)?(?:正面|背面|侧面)(?:视角)?|(?:清晰)?(?:正面|背面|侧面)(?:视角|全身|站姿)(?:视角)?|(?:身体)?(?:微侧身|侧身(?:站立|朝向镜头)?|侧对镜头|侧向镜头)|three[- ]?quarter (?:view|angle)|back view|front view|side view|rear view)/i
+    // A clause made only of a view name plus a stance word ("正面站立", "侧面站姿")
+    // is a direction label, while the same word inside a product sentence is not.
+    const ZH_ORIENTATION_LABEL = /^(?:(?:清晰|贴墙|自然|标准|轻微|大幅)\s*)?(?:正面|背面|侧面)(?:视角|全身|站姿|站立|半身|特写|微侧身|侧身)?$|^(?:身体)?(?:微侧身|侧身|侧对镜头|侧向镜头)$/
+    const ZH_ORIENTATION_STRONG = /(?:背对镜头|背向镜头|面向镜头|正对镜头|朝向镜头|背部朝向镜头|背部正对镜头|背面朝向镜头|转身正对镜头|relative to the camera|facing (?:the )?camera|facing away from the camera|rotated .{1,12} degrees?|turned .{1,12} degrees?|(?:正面|背面|侧面)视角)/i
+    const EN_ORIENTATION_CLAUSE = /\b(?:front|back|rear|side|three[- ]?quarter)(?:[\s-]+(?:view|angle|pose|facing))?\b|\bfacing (?:away from )?the camera\b|\bmodel (?:rotated|turned)\b/i
+    // Clause separators. Chinese commas are the normal separator in this content.
+    const CLAUSE_SPLIT = /([，,；;。\n])/
+
+    function splitClauses(text) {
+      const parts = String(text == null ? '' : text).split(CLAUSE_SPLIT)
+      const clauses = []
+      for (let i = 0; i < parts.length; i += 1) {
+        if (i % 2 === 0) clauses.push(parts[i])
+      }
+      return clauses
+    }
+
+    /**
+     * Removes direction clauses from a Chinese or English prose fragment.
+     * @returns {string} cleaned fragment, with no empty clause left behind
+     */
+    function stripOrientationClauses(text) {
+      const source = String(text == null ? '' : text)
+      if (!source.trim()) return ''
+      const parts = source.split(CLAUSE_SPLIT)
+      const kept = []
+      let changed = false
+      for (let i = 0; i < parts.length; i += 1) {
+        const piece = parts[i]
+        if (i % 2 === 1) continue
+        const value = piece.trim()
+        if (!value) continue
+        // A clause that is *only* a direction statement is dropped as a whole.
+        if (ZH_ORIENTATION_LABEL.test(value)) {
+          changed = true
+          continue
+        }
+        if (ZH_ORIENTATION_STRONG.test(value) && value.length <= 28) {
+          changed = true
+          continue
+        }
+        if (EN_ORIENTATION_CLAUSE.test(value) && value.length <= 70 && !/商品|product|garment/i.test(value)) {
+          // English prose arrives as comma-separated fragments, so a clause this
+          // short that names a view is the viewing instruction itself.
+          changed = true
+          continue
+        }
+        if (ZH_ORIENTATION_CLAUSE.test(value) && /^(?:模特|人物|主体|全身|画面中|展示)/.test(value) && value.length <= 30) {
+          changed = true
+          continue
+        }
+        kept.push(value)
+      }
+      if (!changed) return source.trim()
+      return kept.join('，').replace(/[，、；;]{2,}/g, '，').replace(/^[，、；;]+|[，、；;。]+$/g, '').trim()
+    }
+
+    /** True when the text still contains a model-direction statement. */
+    function hasOrientationStatement(text) {
+      return stripOrientationClauses(text) !== String(text == null ? '' : text).trim()
+    }
+
+    // ---------------------------------------------------------------- titles
+    // Titles are short labels. A title that names a direction would contradict the
+    // slider, so those fragments are removed; an empty result falls back to the
+    // caller's generated name.
+    const TITLE_DIRECTION_FRAGMENTS = [
+      /背对镜头|背向镜头|面向镜头|正对镜头|朝向镜头|转身正对镜头/g,
+      /背部朝向镜头|背部正对镜头|背面朝向镜头/g,
+      /(?:清晰)?(?:正面|背面|侧面)(?:视角|全身|站姿|站立|半身|特写)/g,
+      /(?:身体)?(?:微侧身|侧身|侧对镜头|侧向镜头)/g,
+      /\b(?:front|back|rear|side|three[- ]?quarter)(?:[\s-]+view)?\b/gi,
+      /\bfacing (?:away from )?the camera\b/gi,
+    ]
+
+    function stripTitleDirection(text, actionTitle) {
+      let value = String(text == null ? '' : text).trim()
+      if (!value) return ''
+      for (const pattern of TITLE_DIRECTION_FRAGMENTS) value = value.replace(pattern, ' ')
+      // An action title names movement, so a leftover direction word at either end
+      // is noise ("正面 持手机自然站姿"). A prompt title may legitimately start
+      // with 商品正面, which is why this only runs for actions.
+      if (actionTitle) {
+        value = value.replace(/^(?:清晰|自然)?(?:正面|背面|侧面|背对镜头|背向镜头|面向镜头|正对镜头)的?[\s，,、]*/u, '')
+        value = value.replace(/[\s，,、]*(?:正面|背面|侧面|背对镜头|背向镜头|面向镜头|正对镜头)$/u, '')
+      }
+      value = value.replace(/\s+/g, ' ').replace(/[，、；;：:·\-—_]+$/g, '').trim()
+      // A title made only of a stance word ("正面站立" -> "站立") carries no action
+      // any more: an empty result is the honest one and the caller regenerates it.
+      return /^(?:站立|站姿|standing)$/i.test(value) ? '' : value
+    }
+
+    // ---------------------------------------------------------------- JSON
+    // Only these object keys describe the model's facing direction. Everything
+    // else (product.front, scene.angle, camera.angle, hand.angle ...) is kept.
+    const ORIENTATION_KEYS = new Set([
+      'orientation', '朝向', 'poseangle', 'modelangle', 'facing', 'viewangle', 'modelorientation', '模型朝向', '模特朝向',
+    ])
+    // `angle`/`方向` alone are ambiguous, so they are orientation fields only when
+    // their parent object is about the model itself.
+    const AMBIGUOUS_ORIENTATION_KEYS = new Set(['angle', '角度', '方向'])
+    const MODEL_OWNER = /^(?:model|pose|action|动作|模特|人物|subject)$/i
+
+    /** Keys whose value is about the product, scene or camera rather than the model. */
+    const KEEP_ANGLE_OWNER = /^(?:product|商品|详情图|reference|参考图|scene|背景|environment|camera|机位|shot|镜头|light|光|hair|头发|hand|手|arm|臂|leg|腿|foot|脚|head|头|eye|眼|bodyturn|body)$/i
+
+    function isOrientationKey(key, owner) {
+      const name = String(key).toLowerCase()
+      // A product object's `view` is the reference viewpoint ("front view"), never
+      // the model's facing direction, so ownership decides before the key does.
+      if (KEEP_ANGLE_OWNER.test(String(owner || ''))) return false
+      if (ORIENTATION_KEYS.has(name)) return true
+      return AMBIGUOUS_ORIENTATION_KEYS.has(name) && MODEL_OWNER.test(String(owner || ''))
+    }
+
+    /**
+     * Recursively removes model-orientation fields from a parsed JSON value.
+     * @param {*} value parsed JSON
+     * @param {string} owner the object key that owns the current value
+     * @returns {{value: *, changed: boolean}}
+     */
+    function stripOrientationFields(value, owner) {
+      if (Array.isArray(value)) {
+        let changed = false
+        const next = value.map(item => {
+          const result = stripOrientationFields(item, owner)
+          if (result.changed) changed = true
+          return result.value
+        })
+        return { value: next, changed }
+      }
+      if (!value || typeof value !== 'object') return { value, changed: false }
+      let changed = false
+      const next = {}
+      for (const key of Object.keys(value)) {
+        const child = value[key]
+        if (isOrientationKey(key, owner) && !KEEP_ANGLE_OWNER.test(owner || '')) {
+          changed = true
+          continue
+        }
+        if (typeof child === 'string') {
+          // A product/scene/camera data field ("front", "45 degree overhead",
+          // "商品正面口袋") is never a model-direction sentence, so it is kept as is.
+          const keep = KEEP_ANGLE_OWNER.test(key) || KEEP_ANGLE_OWNER.test(owner || '')
+          const cleaned = keep ? child : stripOrientationClauses(child)
+          if (cleaned !== child.trim()) changed = true
+          next[key] = cleaned
+        } else {
+          const result = stripOrientationFields(child, key)
+          if (result.changed) changed = true
+          next[key] = result.value
+        }
+      }
+      return { value: next, changed }
+    }
+
+    /**
+     * Cleans one library text entry: pure prose is filtered clause by clause, a
+     * JSON document (bare or fenced) is filtered field by field. Malformed JSON is
+     * returned unchanged instead of being damaged unrecognisably.
+     * @returns {string} the cleaned text
+     */
+    function stripOrientationMetadata(text) {
+      const source = String(text == null ? '' : text)
+      if (!source.trim()) return ''
+      const fenced = /^```[a-z]*\s*\n([\s\S]*?)\n```$/i.exec(source.trim())
+      const body = fenced ? fenced[1] : source.trim()
+      const looksJson = /^[[{]/.test(body.trim())
+      if (looksJson) {
+        try {
+          const parsed = JSON.parse(body)
+          const result = stripOrientationFields(parsed, '')
+          if (!result.changed) return source.trim()
+          const serialized = JSON.stringify(result.value, null, 2)
+          return fenced ? `\`\`\`json\n${serialized}\n\`\`\`` : serialized
+        } catch {
+          // Not valid JSON: fall through to the prose filter rather than guessing.
+        }
+      }
+      return stripOrientationClauses(source)
     }
 
     // --------------------------------------------------------------- helpers
@@ -1388,11 +1576,18 @@ window.__ModuleLoader__.load({
       for (const key of ['desc', 'modelPrompt', 'backgroundPrompt', 'extraPrompt', 'negative']) {
         if (typeof merged[key] !== 'string') merged[key] = DEFAULT_FORM[key]
       }
+      // Stored prompt snapshots may still carry a facing direction from before the
+      // angle slider; the library holds the cleaned text, so they are split here too.
+      for (const key of ['modelPrompt', 'backgroundPrompt', 'extraPrompt']) {
+        merged[key] = stripOrientationMetadata(merged[key])
+      }
       // A description saved by an older version starts with the previous
       // reference note: swap in the current wording right away so the removed
       // sentence cannot linger in the description field.
       if (merged.desc) merged.desc = upgradeLegacyDescNote(merged.desc)
       if (typeof merged.pose !== 'string') merged.pose = ''
+      const poseAngle = Number(merged.poseAngle)
+      merged.poseAngle = Number.isFinite(poseAngle) ? Math.max(0, Math.min(180, Math.round(poseAngle))) : DEFAULT_FORM.poseAngle
       if (!RATIOS.some(item => item.id === merged.ratio)) merged.ratio = DEFAULT_FORM.ratio
       if (!RESOLUTIONS.some(item => item.id === merged.resolution)) merged.resolution = DEFAULT_FORM.resolution
       if (!SHOW.some(item => item.id === merged.show)) merged.show = DEFAULT_FORM.show
@@ -1409,68 +1604,39 @@ window.__ModuleLoader__.load({
     }
 
     /** Persisted collections are filtered so a bad entry cannot break rendering. */
-    // ------------------------------------------------------------ pose groups
-    // Custom actions carry an orientation so the studio can list them under
-    // 正面 / 侧面 / 背面. Entries saved before this field existed have it guessed
-    // from the name + description; the guess is stored on the next save.
-    const POSE_ORIENTATIONS = ['front', 'side', 'back']
-    const POSE_ORIENTATION_ALIASES = {
-      front: 'front', 正面: 'front', 正: 'front', frontview: 'front', facingcamera: 'front',
-      side: 'side', 侧面: 'side', 侧: 'side', sideview: 'side', profile: 'side', threequarter: 'side',
-      back: 'back', 背面: 'back', 背: 'back', backview: 'back', rear: 'back',
-    }
-    // Unambiguous back-facing wording wins first (「背部正对镜头」 mentions 正对 but is
-    // a back view), then front, then side, so "正面微侧身" is front and not side.
-    // 背后 alone is not enough: a description may say "正面站立，背后是海景", so it
-    // only counts together with a viewing cue (看/拍/镜头/机位/观众/视角).
-    const POSE_ORIENTATION_TESTS = [
-      [
-        'back',
-        /背(对|向)|背影|背(面|部)?正对|背部朝|背面朝|背后(看|拍|的?镜|机位|观众)|背(面|后)(有|的)?(视角|机位|观众|镜头)|后方(有|的)?(视角|机位|观众)|from the back|rear view|back view/i,
-      ],
-      ['front', /正面|正身|正对镜头|面向镜头|front view|facing (the )?camera/i],
-      ['side', /侧面|侧身|侧对|侧向|three[- ]?quarter|side view|profile/i],
-    ]
-    // The name is the stronger signal (a description may mention 背部 as a body
-    // part), so a bare 背面/侧身 in the name is enough there.
-    const POSE_NAME_TESTS = [
-      ['front', /正(面|身)|正对|front/i],
-      ['back', /背(面|部|后)|背对|背向|背影|back/i],
-      ['side', /侧(面|身|对|向)|side|profile/i],
-    ]
-
-    function guessPoseOrientation(text, tests) {
-      const source = String(text || '')
-      if (!source) return ''
-      for (const [id, pattern] of tests) {
-        if (pattern.test(source)) return id
+    // --------------------------------------------------------- pose library
+    // Actions describe movement only. Which way the model faces comes from the
+    // studio's angle slider, so neither a stored orientation field nor a
+    // direction word in the title is kept any more.
+    function cleanPoseEntry(item) {
+      const prompt = stripOrientationMetadata(item.prompt)
+      const rawName = String(item.name || '').trim()
+      // A title that was nothing but a facing direction has no fallback value of
+      // its own: keeping it would reintroduce the direction the slider owns.
+      const cleanedName = stripTitleDirection(rawName, true)
+      return {
+        id: item.id,
+        name: cleanedName || stripTitleDirection(prompt.slice(0, TITLE_MAX_CHARS), true) || prompt.slice(0, TITLE_MAX_CHARS),
+        prompt,
       }
-      return ''
     }
 
-    function poseOrientationOf(value) {
-      // The title is the user's own label, so an orientation written in it wins
-      // over the stored field: renaming 「正面站姿」 to 「背对镜头站立」 re-groups the
-      // action without any extra step. Only a title that says nothing about the
-      // direction falls back to the stored value, then to the description.
-      const fromName = guessPoseOrientation(value && value.name, POSE_NAME_TESTS)
-      if (fromName) return fromName
-      const raw = String((value && value.orientation) || '')
-        .toLowerCase()
-        .replace(/[\s_-]+/g, '')
-      if (raw && POSE_ORIENTATION_ALIASES[raw]) return POSE_ORIENTATION_ALIASES[raw]
-      return guessPoseOrientation(value && value.prompt, POSE_ORIENTATION_TESTS) || 'front'
-    }
-
-    function groupPoses(poses) {
-      const byId = new Map(POSE_ORIENTATIONS.map(id => [id, []]))
-      for (const item of poses || []) {
-        const bucket = byId.get(poseOrientationOf(item))
-        if (bucket) bucket.push(item)
-      }
-      return POSE_ORIENTATIONS
-        .map(id => ({ id, items: byId.get(id) || [] }))
-        .filter(group => group.items.length > 0)
+    /**
+     * True when a stored list still carries a facing direction: an old
+     * orientation field, a direction-only title or direction grammar in the text.
+     * @param {Array|null} list parsed stored list
+     * @param {'pose'|'prompt'} kind which library the list belongs to
+     */
+    function directionCleanupNeeded(list, kind) {
+      if (!Array.isArray(list)) return false
+      return list.some(item => {
+        if (!item || typeof item !== 'object') return false
+        if ('orientation' in item) return true
+        const text = kind === 'prompt' ? item.text : item.prompt
+        if (typeof item.name === 'string' && stripTitleDirection(item.name, kind !== 'prompt') !== item.name.trim()) return true
+        if (typeof text === 'string' && stripOrientationMetadata(text) !== text.trim()) return true
+        return false
+      })
     }
 
     function loadPoses() {
@@ -1479,7 +1645,7 @@ window.__ModuleLoader__.load({
         .filter(item => (
           item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.prompt === 'string'
         ))
-        .map(item => ({ ...item, orientation: poseOrientationOf(item) }))
+        .map(cleanPoseEntry)
     }
 
     function loadTemplates() {
@@ -1489,11 +1655,23 @@ window.__ModuleLoader__.load({
       )).map(item => ({ ...item, form: { ...item.form } }))
     }
 
+    function cleanPromptEntry(item) {
+      const text = stripOrientationMetadata(item.text)
+      const rawName = String(item.name || '').trim()
+      const cleanedName = stripTitleDirection(rawName)
+      return {
+        id: item.id,
+        name: cleanedName || stripTitleDirection(text.slice(0, TITLE_MAX_CHARS)) || text.slice(0, 16),
+        text,
+        kind: item.kind || 'style',
+      }
+    }
+
     function loadReusablePrompts() {
       const value = loadJson(LS_PROMPTS, [])
       return (Array.isArray(value) ? value : []).filter(item => (
         item && typeof item.id === 'string' && typeof item.text === 'string'
-      )).map(item => ({ ...item, kind: item.kind || 'style' }))
+      )).map(cleanPromptEntry)
     }
 
     // -------------------------------------------------- prompt import/export
@@ -1750,26 +1928,28 @@ window.__ModuleLoader__.load({
 
     // ----------------------------------------------------- pose import/export
     // Actions travel as one JSON file, mirroring the prompt library. Ids never
-    // leave the machine; an action is identified by orientation + name + text.
+    // leave the machine; an action is identified by name + cleaned text only,
+    // because facing direction is no longer part of an action.
     const POSE_EXPORT_FORMAT = 'personal-workbench.pose-library'
-    const POSE_EXPORT_VERSION = 1
+    const POSE_EXPORT_VERSION = 2
 
     function poseEntryText(item) {
       if (!item) return ''
       const value = item.prompt !== undefined ? item.prompt : (item.text !== undefined ? item.text : item.content)
-      return typeof value === 'string' ? value.trim() : ''
+      return typeof value === 'string' ? stripOrientationMetadata(value) : ''
     }
 
     function poseEntryName(item, text) {
       const name = item && typeof item.name === 'string' ? item.name.trim() : ''
-      return name || String(text || '').slice(0, 16)
+      const cleanedName = stripTitleDirection(name, true)
+      return cleanedName || String(text || '').slice(0, TITLE_MAX_CHARS)
     }
 
     // Dedupe key must derive the name exactly like `parsePoseImport` does, or a
     // nameless stored action would be imported a second time.
     function poseImportKey(item) {
       const text = poseEntryText(item)
-      return `${poseOrientationOf(item)}\u0000${poseEntryName(item, text).slice(0, 80)}\u0000${text}`
+      return `${poseEntryName(item, text).slice(0, 80)}\u0000${text}`
     }
 
     function buildPoseExport(poses) {
@@ -1779,9 +1959,8 @@ window.__ModuleLoader__.load({
         exportedAt: new Date().toISOString(),
         count: (poses || []).length,
         poses: (poses || []).map(item => ({
-          name: item.name,
-          orientation: poseOrientationOf(item),
-          prompt: item.prompt,
+          name: stripTitleDirection(item.name, true) || item.name,
+          prompt: stripOrientationMetadata(item.prompt),
         })),
       }
     }
@@ -1812,8 +1991,7 @@ window.__ModuleLoader__.load({
           continue
         }
         const name = poseEntryName(item, text).slice(0, 80)
-        const orientation = poseOrientationOf(item)
-        const key = `${orientation}\u0000${name}\u0000${text}`
+        const key = `${name}\u0000${text}`
         if (seen.has(key)) {
           duplicates += 1
           continue
@@ -1823,7 +2001,6 @@ window.__ModuleLoader__.load({
           id: `pose-${stamp}${entries.length}${Math.random().toString(36).slice(2, 5)}`,
           name,
           prompt: text,
-          orientation,
         })
       }
       return { ok: true, entries, duplicates, invalid }
@@ -1949,7 +2126,7 @@ window.__ModuleLoader__.load({
       if (!form) return entries
       const stamp = Date.now().toString(36)
       for (const key of PROMPT_FIELD_KEYS) {
-        const value = String(form[key] || '').trim()
+        const value = stripOrientationMetadata(String(form[key] || '').trim())
         if (!value) continue
         const kind = PROMPT_FIELD_KINDS[key]
         const known = (prompts || []).some(item => (
@@ -1978,6 +2155,20 @@ window.__ModuleLoader__.load({
      * @param fidelityText strict-product-fidelity module (editable in Settings)
      * @param lang 'zh' | 'en'
      */
+    function poseAngleInstruction(angle, lang) {
+      const value = Math.max(0, Math.min(180, Number(angle) || 0))
+      if (lang === 'en') {
+        if (value === 0) return 'model facing the camera at 0 degrees, clear front view'
+        if (value === 90) return 'model turned 90 degrees from the camera, clear side view'
+        if (value === 180) return 'model facing away from the camera at 180 degrees, show the back view; do not turn toward the camera'
+        return `model rotated ${value} degrees away from the camera; preserve this exact viewing angle`
+      }
+      if (value === 0) return '模特朝向镜头 0°，展示清晰正面视角'
+      if (value === 90) return '模特相对镜头转向 90°，展示清晰侧面视角'
+      if (value === 180) return '模特背向镜头 180°，展示清晰背面视角；不要转身正对镜头'
+      return `模特相对镜头转向 ${value}°，严格保持这个角度`
+    }
+
     function buildPrompt(form, hasProductRef, customPoses, fidelityText, lang) {
       const en = lang === 'en'
       const rawDescription = form.desc && form.desc.trim() ? form.desc.trim() : ''
@@ -1985,13 +2176,16 @@ window.__ModuleLoader__.load({
       // description is prefixed with the "supplement only" note. Without
       // references that note is removed again so it never claims a missing photo.
       const description = hasProductRef ? withDescPrefix(rawDescription) : stripDescPrefix(rawDescription)
-      const modelPrompt = form.modelPrompt && form.modelPrompt.trim() ? form.modelPrompt.trim() : ''
+      const modelPrompt = form.modelPrompt && form.modelPrompt.trim() ? stripOrientationClauses(form.modelPrompt.trim()) : ''
       const backgroundPrompt = form.backgroundPrompt && form.backgroundPrompt.trim() ? form.backgroundPrompt.trim() : ''
       // The model is described in words only; the framing chips speak about that
       // described model.
       const hasModel = Boolean(modelPrompt)
       const customPose = (customPoses || []).find(item => item && item.id === form.pose)
-      const poseText = customPose && customPose.prompt ? customPose.prompt.trim() : ''
+      const poseText = customPose && customPose.prompt ? stripOrientationClauses(customPose.prompt) : ''
+      // The angle slider is the only source of the model's facing direction.
+      // Product reference-view rules stay separate from this instruction.
+      const poseOrientationText = poseAngleInstruction(form.poseAngle, lang)
       // Framing (face visible / crop at neck / crop at chest) only means anything
       // when a model is part of the shot; otherwise the studio hides the chips.
       const framing = hasModel ? findOption(SHOW, form.show) : null
@@ -2025,12 +2219,14 @@ window.__ModuleLoader__.load({
         parts.push(en ? 'presenting the apparel' : '展示服装')
       }
 
+      if (poseOrientationText) parts.push(poseOrientationText)
       if (poseText) parts.push(poseText)
       // Backgrounds are described in words; the studio has no scene upload.
       let background = ''
       if (backgroundPrompt) background = en ? `background: ${backgroundPrompt}` : `背景：${backgroundPrompt}`
       parts.push(background || (en ? 'clean seamless studio backdrop' : '干净的纯色影棚背景'))
-      if (form.extraPrompt && form.extraPrompt.trim()) parts.push(form.extraPrompt.trim())
+      const extraPrompt = form.extraPrompt && form.extraPrompt.trim() ? stripOrientationClauses(form.extraPrompt.trim()) : ''
+      if (extraPrompt) parts.push(extraPrompt)
       // A "full-body fashion framing" line fights the neck crop: the model satisfies
       // the whole-body request by including the head. The crop rule wins.
       if (en) {
@@ -3029,6 +3225,47 @@ window.__ModuleLoader__.load({
         reportStorageFailure(saveJson(LS_POSES, next))
       }, [reportStorageFailure])
 
+      // ------------------------------------------- one-time direction cleanup
+      // The angle slider replaced every stored facing direction, so the saved
+      // libraries are rewritten once: old orientation fields, direction grammar
+      // and direction-only titles go away for good. The original raw JSON is
+      // kept in a backup key first, so nothing is lost irreversibly.
+      useEffect(() => {
+        let rawPoses = null
+        let rawPrompts = null
+        try {
+          rawPoses = window.localStorage.getItem(LS_POSES)
+          rawPrompts = window.localStorage.getItem(LS_PROMPTS)
+        } catch {
+          return
+        }
+        if (!rawPoses && !rawPrompts) return
+        const readList = raw => {
+          try {
+            const parsed = JSON.parse(raw)
+            return Array.isArray(parsed) ? parsed : null
+          } catch {
+            return null
+          }
+        }
+        // Only an entry that really carries a facing direction needs a rewrite:
+        // an untouched library must not be written (or announced) on every load.
+        const cleanPoses = directionCleanupNeeded(readList(rawPoses), 'pose')
+        const cleanPrompts = directionCleanupNeeded(readList(rawPrompts), 'prompt')
+        if (!cleanPoses && !cleanPrompts) return
+        const backupResult = saveJson(LS_DIRECTION_BACKUP, {
+          savedAt: new Date().toISOString(),
+          poses: rawPoses,
+          prompts: rawPrompts,
+        })
+        if (!backupResult.ok) reportStorageFailure(backupResult)
+        const posesResult = cleanPoses ? saveJson(LS_POSES, loadPoses()) : { ok: true }
+        const promptsResult = cleanPrompts ? saveJson(LS_PROMPTS, loadReusablePrompts()) : { ok: true }
+        if (!posesResult.ok) reportStorageFailure(posesResult)
+        if (!promptsResult.ok) reportStorageFailure(promptsResult)
+        if (posesResult.ok && promptsResult.ok) setNotice({ kind: 'ok', text: t('directionCleaned') })
+      }, [reportStorageFailure, t])
+
       const refreshHistory = useCallback(async () => {
         try {
           const json = await api('/history?limit=48')
@@ -3182,6 +3419,7 @@ window.__ModuleLoader__.load({
         resolution: source.resolution,
         show: source.show,
         pose: source.pose,
+        poseAngle: source.poseAngle,
         desc: source.desc,
         modelPrompt: source.modelPrompt,
         backgroundPrompt: source.backgroundPrompt,
@@ -3207,17 +3445,27 @@ window.__ModuleLoader__.load({
         const next = { ...template.form }
         if (next.pose && !customPoses.some(item => item.id === next.pose)) next.pose = ''
         if (!SHOW.some(item => item.id === next.show)) next.show = DEFAULT_FORM.show
+        const poseAngle = Number(next.poseAngle)
+        // A template saved before the slider existed must not reset the angle.
+        next.poseAngle = Number.isFinite(poseAngle)
+          ? Math.max(0, Math.min(180, Math.round(poseAngle)))
+          : form.poseAngle
         if (!RATIOS.some(item => item.id === next.ratio)) next.ratio = DEFAULT_FORM.ratio
         if (!RESOLUTIONS.some(item => item.id === next.resolution)) next.resolution = DEFAULT_FORM.resolution
-        // A template may carry the reference-first note from a previous photo set.
+        // A template may carry the reference-first note from a previous photo set,
+        // and one saved before the angle slider still has direction words in its
+        // prompt fields: both are normalised on the way in.
         if (typeof next.desc === 'string') {
           next.desc = productRefs.length > 0 ? withDescPrefix(next.desc) : stripDescPrefix(next.desc)
+        }
+        for (const key of PROMPT_FIELD_KEYS) {
+          if (typeof next[key] === 'string') next[key] = stripOrientationMetadata(next[key])
         }
         update(next)
         setTemplatePage(false)
         setPosePage(false)
         setNotice({ kind: 'ok', text: t('templateApplied') })
-      }, [update, customPoses, productRefs.length, t])
+      }, [update, customPoses, productRefs.length, form.poseAngle, t])
 
       const updateTemplate = useCallback((id, patch) => {
         const next = templates.map(template => (
@@ -3241,15 +3489,13 @@ window.__ModuleLoader__.load({
       }, [reportStorageFailure])
 
       const saveReusablePrompt = useCallback((kind, name, text) => {
-        const cleanText = String(text || '').trim()
-        if (!cleanText) return
-        const cleanKind = ['style', 'model', 'scene'].indexOf(kind) >= 0 ? kind : 'style'
-        const entry = {
+        const entry = cleanPromptEntry({
           id: `pr-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
-          kind: cleanKind,
-          name: String(name || '').trim() || cleanText.slice(0, 16),
-          text: cleanText,
-        }
+          kind,
+          name: String(name || '').trim(),
+          text,
+        })
+        if (!entry.text.trim()) return
         persistReusablePrompts([...reusablePrompts, entry])
         setNotice({ kind: 'ok', text: t('promptSaved') })
       }, [reusablePrompts, persistReusablePrompts, t])
@@ -3287,11 +3533,18 @@ window.__ModuleLoader__.load({
 
       const updateReusablePrompt = useCallback((id, patch) => {
         const current = reusablePrompts.find(item => item.id === id)
-        persistReusablePrompts(reusablePrompts.map(item => (item.id === id ? { ...item, ...patch } : item)))
+        // The editor and the studio both go through here, so the cleanup is
+        // applied once on the way in and the sync below compares clean text.
+        const cleanPatch = { ...patch }
+        if (typeof cleanPatch.text === 'string') cleanPatch.text = stripOrientationMetadata(cleanPatch.text)
+        if (typeof cleanPatch.name === 'string') {
+          cleanPatch.name = stripTitleDirection(cleanPatch.name) || cleanPatch.name
+        }
+        persistReusablePrompts(reusablePrompts.map(item => (item.id === id ? { ...item, ...cleanPatch } : item)))
         if (current) {
           const kind = current.kind || 'style'
-          const kindChanged = typeof patch.kind === 'string' && patch.kind !== kind
-          const textChanged = typeof patch.text === 'string' && patch.text !== current.text
+          const kindChanged = typeof cleanPatch.kind === 'string' && cleanPatch.kind !== kind
+          const textChanged = typeof cleanPatch.text === 'string' && cleanPatch.text !== current.text
           if (kindChanged) {
             // The entry moved to another kind, so a field of the old kind cannot
             // show it any more: clear the stale copy instead of leaving prompt
@@ -3299,8 +3552,8 @@ window.__ModuleLoader__.load({
             dropAppliedPrompt(current.text, kind)
             syncTemplates(current.text, '', kind)
           } else if (textChanged) {
-            syncAppliedPrompt(current.text, patch.text, kind)
-            syncTemplates(current.text, patch.text, kind)
+            syncAppliedPrompt(current.text, cleanPatch.text, kind)
+            syncTemplates(current.text, cleanPatch.text, kind)
           }
         }
         setNotice({ kind: 'ok', text: t('promptUpdated') })
@@ -3322,14 +3575,14 @@ window.__ModuleLoader__.load({
       }, [reusablePrompts, persistReusablePrompts, dropAppliedPrompt, syncTemplates, t])
 
       const adoptPromptText = useCallback((kind, text) => {
-        const value = String(text || '').trim()
+        const value = stripOrientationMetadata(text).trim()
         if (!value) return
         const cleanKind = ['style', 'model', 'scene'].indexOf(kind) >= 0 ? kind : 'style'
         if (reusablePrompts.some(item => (item.kind || 'style') === cleanKind && String(item.text || '').trim() === value)) return
         persistReusablePrompts([...reusablePrompts, {
           id: `pr-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
           kind: cleanKind,
-          name: value.slice(0, 16),
+          name: stripTitleDirection(value.slice(0, 16)) || value.slice(0, 16),
           text: value,
         }])
         setNotice({ kind: 'ok', text: t('promptArchived') })
@@ -3342,10 +3595,10 @@ window.__ModuleLoader__.load({
           item && typeof item.id === 'string' && typeof item.text === 'string' && item.text.trim()
         ))
         if (!valid.length) return
-        persistReusablePrompts([...reusablePrompts, ...valid.map(item => ({
+        persistReusablePrompts([...reusablePrompts, ...valid.map(item => cleanPromptEntry({
           ...item,
           kind: normalizePromptKind(item.kind),
-          name: String(item.name || '').trim() || item.text.slice(0, 16),
+          name: String(item.name || '').trim(),
           text: item.text.trim(),
         }))])
         const skipped = (meta && Number(meta.duplicates || 0)) + (meta && Number(meta.invalid || 0))
@@ -3430,11 +3683,10 @@ window.__ModuleLoader__.load({
           item && typeof item.id === 'string' && typeof item.prompt === 'string' && item.prompt.trim()
         ))
         if (!valid.length) return 0
-        persistPoses([...customPoses, ...valid.map(item => ({
+        persistPoses([...customPoses, ...valid.map(item => cleanPoseEntry({
           ...item,
           name: String(item.name || '').trim() || item.prompt.trim().slice(0, 16),
           prompt: item.prompt.trim(),
-          orientation: poseOrientationOf(item),
         }))])
         setNotice({ kind: 'ok', text: `${t('poseImportDone')} ${valid.length}` })
         return valid.length
@@ -5488,25 +5740,14 @@ window.__ModuleLoader__.load({
         )
       }
 
-      // Actions are listed under their orientation so a long library stays
-      // scannable; empty groups are skipped entirely.
+      // Actions are independent of facing direction; the angle control below is
+      // the only source of model orientation, so the library stays one flat list.
       const poseSection = customPoses.length
         ? h(
             'div',
             { style: { marginBottom: 16 } },
             poseLabelRow,
-            groupPoses(customPoses).map(group =>
-              h(
-                'div',
-                { key: group.id, style: { marginBottom: 8 } },
-                h(
-                  'div',
-                  { style: { fontSize: 10.5, color: 'var(--dsw-alias-label-secondary)', marginBottom: 5, letterSpacing: 0.2 } },
-                  t(`poseGroup${group.id === 'front' ? 'Front' : group.id === 'side' ? 'Side' : 'Back'}`),
-                ),
-                h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, group.items.map(poseChip)),
-              ),
-            ),
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, customPoses.map(poseChip)),
           )
         : h(
             'div',
@@ -5520,6 +5761,28 @@ window.__ModuleLoader__.load({
         null,
         h(SectionHead, { title: t('studioModelTitle') }),
         poseSection,
+        h(
+          'div',
+          { style: { marginBottom: 16, padding: '10px 12px', background: 'var(--dsw-alias-bg-layer-2)', borderRadius: 8 } },
+          h(
+            'div',
+            { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 6 } },
+            h('div', { style: { fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-secondary)' } }, t('fPoseAngle')),
+            h('output', { style: { fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, `${form.poseAngle}°`),
+          ),
+          h('input', {
+            type: 'range', min: 0, max: 180, step: 1, value: form.poseAngle,
+            'aria-label': t('fPoseAngle'),
+            onChange: event => update({ poseAngle: Number(event.target.value) }),
+            style: { display: 'block', width: '100%', accentColor: 'var(--dsw-alias-brand-primary)', cursor: 'pointer' },
+          }),
+          h(
+            'div',
+            { style: { display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: 10.5, color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' } },
+            h('span', null, '0°'), h('span', null, '90°'), h('span', null, '180°'),
+          ),
+          h('div', { style: { fontSize: 10.5, color: 'var(--dsw-alias-label-secondary)', marginTop: 4 } }, t('fPoseAngleHint')),
+        ),
         form.modelPrompt && String(form.modelPrompt).trim() ? chip('show', 'fShow', SHOW, t('showHint')) : null,
       )
 
@@ -5912,7 +6175,7 @@ window.__ModuleLoader__.load({
 
       const autoTitle = async () => {
         if (!editor) return
-        const text = String(editor.text || '').trim()
+        const text = stripOrientationMetadata(String(editor.text || '')).trim()
         if (!text) {
           setWarning(t('titleNeedPrompt'))
           return
@@ -5921,7 +6184,7 @@ window.__ModuleLoader__.load({
         setWarning('')
         try {
           const title = await requestTitle(text, 'prompt')
-          setDraft(prev => ({ ...(prev || {}), name: title }))
+          setDraft(prev => ({ ...(prev || {}), name: stripTitleDirection(title) || title }))
         } finally {
           setTitling(false)
         }
@@ -5967,7 +6230,9 @@ window.__ModuleLoader__.load({
       const changeEditor = patch => setDraft(prev => ({ ...(prev || {}), ...patch }))
       const saveEditor = async () => {
         if (!editor) return
-        const text = String(editor.text || '').trim()
+        // Facing direction is owned by the studio angle slider, so it is removed
+        // before the text is stored, compared or titled.
+        const text = stripOrientationMetadata(String(editor.text || '')).trim()
         if (!text) return
         const kind = ['style', 'model', 'scene'].indexOf(editor.kind) >= 0 ? editor.kind : 'style'
         // Two entries with the same text in one kind cannot be told apart by the
@@ -5989,7 +6254,7 @@ window.__ModuleLoader__.load({
             setTitling(false)
           }
         }
-        name = clipTitle(name) || localTitle(text, 'prompt')
+        name = stripTitleDirection(clipTitle(name)) || clipTitle(name) || localTitle(text, 'prompt')
         setWarning('')
         if (editor.id) onUpdate(editor.id, { kind, name, text })
         else onSave(kind, name, text)
@@ -6481,7 +6746,7 @@ window.__ModuleLoader__.load({
       // editor === null means "browsing". A new draft and an in-place row edit
       // share the same shape so both render the same fields.
       const [editor, setEditor] = useState(() => (
-        startNew ? { mode: 'new', id: null, name: '', prompt: '', orientation: 'front' } : null
+        startNew ? { mode: 'new', id: null, name: '', prompt: '' } : null
       ))
       const [flash, setFlash] = useState('')
       const [warning, setWarning] = useState('')
@@ -6495,7 +6760,7 @@ window.__ModuleLoader__.load({
 
       const autoTitle = async () => {
         if (!editor) return
-        const prompt = editor.prompt.trim()
+        const prompt = stripOrientationMetadata(editor.prompt).trim()
         if (!prompt) {
           setWarning(t('titleNeedPrompt'))
           return
@@ -6504,7 +6769,7 @@ window.__ModuleLoader__.load({
         setWarning('')
         try {
           const title = await requestTitle(prompt, 'pose')
-          setEditor(prev => (prev ? { ...prev, name: title } : prev))
+          setEditor(prev => (prev ? { ...prev, name: stripTitleDirection(title, true) || title } : prev))
         } finally {
           setTitling(false)
         }
@@ -6514,7 +6779,7 @@ window.__ModuleLoader__.load({
         setFlash('')
         setWarning('')
         setConfirmId(null)
-        setEditor({ mode: 'new', id: null, name: '', prompt: '', orientation: 'front' })
+        setEditor({ mode: 'new', id: null, name: '', prompt: '' })
       }
 
       const startEdit = item => {
@@ -6526,7 +6791,6 @@ window.__ModuleLoader__.load({
           id: item.id,
           name: item.name,
           prompt: item.prompt,
-          orientation: poseOrientationOf(item),
         })
       }
 
@@ -6539,22 +6803,25 @@ window.__ModuleLoader__.load({
         setFlash('')
         setWarning('')
         setConfirmId(null)
-        setEditor(prev => {
-          if (!prev) return prev
-          const next = { ...prev, ...patch }
-          // Typing a title that names a direction re-groups the action at once, so
-          // the chips below show what the title decided instead of an old choice.
-          const derived = guessPoseOrientation(next.name, POSE_NAME_TESTS)
-          if (derived) next.orientation = derived
-          return next
-        })
+        setEditor(prev => (prev ? { ...prev, ...patch } : prev))
       }
 
       const save = async () => {
         if (!editor) return
-        const prompt = editor.prompt.trim()
-        if (!prompt) return
-        let name = editor.name.trim()
+        // Facing direction belongs to the studio's angle slider, so both the
+        // description and the title are stored without it.
+        const sourcePrompt = editor.prompt.trim()
+        const prompt = stripOrientationMetadata(editor.prompt).trim()
+        if (!prompt) {
+          // The action was nothing but a facing direction: refusing is clearer
+          // than saving an empty action or discarding the click silently.
+          if (sourcePrompt) {
+            setWarning(t('poseDirectionOnly'))
+            return
+          }
+          return
+        }
+        let name = stripTitleDirection(editor.name, true)
         if (!name) {
           setTitling(true)
           try {
@@ -6563,13 +6830,12 @@ window.__ModuleLoader__.load({
             setTitling(false)
           }
         }
-        name = clipTitle(name) || localTitle(prompt, 'pose')
+        name = stripTitleDirection(clipTitle(name), true)
+          || stripTitleDirection(localTitle(prompt, 'pose'), true)
+          || localTitle(prompt, 'pose')
         if (!name) return
-        // The saved orientation follows the title first, so the group in the
-        // studio matches what the name says even after an auto-generated title.
-        const orientation = poseOrientationOf({ name, orientation: editor.orientation, prompt })
         const id = editor.id || `pose-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
-        onSavePose({ id, name, prompt, orientation })
+        onSavePose({ id, name, prompt })
         setEditor(null)
         setConfirmId(null)
         setFlash(t('poseSaved'))
@@ -6650,68 +6916,6 @@ window.__ModuleLoader__.load({
         if (editor && editor.id === item.id) setEditor(null)
       }
 
-      const orientationLabel = id =>
-        t(`poseGroup${id === 'front' ? 'Front' : id === 'side' ? 'Side' : 'Back'}`)
-
-      const orientationChips = value =>
-        h(
-          'div',
-          { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
-          POSE_ORIENTATIONS.map(id =>
-            h(
-              'button',
-              {
-                key: id,
-                type: 'button',
-                onClick: () => change({ orientation: id }),
-                style: {
-                  padding: '5px 12px',
-                  borderRadius: 999,
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  border: '1px solid ' + (value === id ? 'transparent' : 'var(--dsw-alias-border-l1)'),
-                  background: value === id ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-bg-layer-2)',
-                  color: value === id ? '#ffffff' : 'var(--dsw-alias-label-primary)',
-                },
-              },
-              orientationLabel(id),
-            ),
-          ),
-        )
-
-      // The group follows the title: when the title names a direction the chips
-      // would be a lie (any click is overruled on save), so they are replaced by a
-      // read-only badge that says where the group came from.
-      const orientationStatus = draft => {
-        const derived = guessPoseOrientation(draft.name, POSE_NAME_TESTS)
-        if (!derived) return orientationChips(poseOrientationOf(draft))
-        return h(
-          'div',
-          { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-          h(
-            'span',
-            {
-              style: {
-                padding: '4px 12px',
-                borderRadius: 999,
-                fontSize: 12,
-                background: 'var(--dsw-alias-brand-primary)',
-                color: '#ffffff',
-              },
-            },
-            orientationLabel(derived),
-          ),
-          h(
-            'span',
-            { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
-            t('poseOrientAuto'),
-          ),
-        )
-      }
-
-      const orientationHintText = draft =>
-        guessPoseOrientation(draft.name, POSE_NAME_TESTS) ? t('poseOrientAutoHint') : t('poseOrientationHint')
-
       // Same fields for a new draft and for an in-place row edit.
       const editorCard = draft =>
         h(
@@ -6721,7 +6925,7 @@ window.__ModuleLoader__.load({
             'div',
             { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 } },
             h('div', { style: { fontSize: 13, fontWeight: 650 } }, draft.mode === 'edit' ? t('poseEditTitle') : t('poseAddTitle')),
-            h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } }, t('poseOrientationHint')),
+            h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } }, t('poseDirectionNote')),
           ),
           h(
             Field,
@@ -6763,11 +6967,6 @@ window.__ModuleLoader__.load({
               rows: 3,
               style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
             }),
-          ),
-          h(
-            Field,
-            { label: t('poseOrient'), hint: orientationHintText(draft) },
-            orientationStatus(draft),
           ),
           h(
             'div',
@@ -6858,25 +7057,10 @@ window.__ModuleLoader__.load({
       const list = customPoses.length > 0
         ? h(
             'div',
-            null,
-            groupPoses(customPoses).map(group =>
-              h(
-                'div',
-                { key: group.id, style: { marginBottom: 14 } },
-                h(
-                  'div',
-                  { style: { fontSize: 12.5, fontWeight: 650, margin: '6px 0 8px' } },
-                  `${orientationLabel(group.id)} · ${group.items.length}`,
-                ),
-                h(
-                  'div',
-                  { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-                  group.items.map(item => (
-                    editor && editor.mode === 'edit' && editor.id === item.id ? editorCard(editor) : rowCard(item)
-                  )),
-                ),
-              ),
-            ),
+            { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+            customPoses.map(item => (
+              editor && editor.mode === 'edit' && editor.id === item.id ? editorCard(editor) : rowCard(item)
+            )),
           )
         : h(
             Card,
