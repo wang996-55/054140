@@ -6,9 +6,10 @@
  * size-chart posters, and settings (image API endpoint / key / output folder /
  * accent color / built-in prompt).
  *
- * The studio sends the model reference sheet (four-view turnaround) and an
- * optional product photo to the Host, which forwards them to an
- * OpenAI-compatible /images/edits endpoint. The API key never enters the browser.
+ * The studio sends product reference photos (up to 4, first one is the front
+ * view) to the Host, which forwards them to an OpenAI-compatible /images/edits
+ * endpoint. The model and background are described in words. The API key never
+ * enters the browser.
  */
 window.__ModuleLoader__.load({
   id: '@local/personal-workbench',
@@ -238,7 +239,7 @@ window.__ModuleLoader__.load({
         showHint: '选择后会以 JSON 构图约束覆盖提示词开头的构图段（只写入一次，不与中文提示词拼接）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
         fExtraPrompt: '自定义提示词（光线 / 风格等）',
         fExtraPromptPh: '例：柔和侧逆光，暖色调，杂志高级感，film grain，35mm 质感',
-        builtinPromptName: '男裤严格保真 V2.3（内置 · JSON）',
+        builtinPromptName: '男裤严格保真 V2.4（内置 · JSON）',
         builtinPromptsTitle: '内置提示词',
         builtinPromptsHint: '内置提示词在勾选「商品严格保真」时自动附加到生成提示词。规则现在是 JSON 格式（与构图约束同一写法，去掉了重复描述），点「编辑」可修改，保存时会校验 JSON 是否合法，也可随时恢复默认。',
         fidelityJsonInvalid: '保真规则需为合法 JSON（对象格式）：请检查大括号、引号与逗号',
@@ -246,8 +247,8 @@ window.__ModuleLoader__.load({
         restoreDefault: '恢复默认',
         fidelityModified: '已自定义',
         fidelityDefault: '默认',
-        strictFidelity: '商品严格保真（内置 V2.3 · JSON）',
-        strictFidelityHint: '自动附加内置保真 JSON 规则：锁定商品颜色、面料、版型、结构与细节；商品真实性高于画面美观度',
+        strictFidelity: '商品严格保真（内置 V2.4 · JSON）',
+        strictFidelityHint: '上传商品参考图时自动附加内置保真 JSON 规则：锁定商品颜色、面料、版型、结构与细节；商品真实性高于画面美观度',
         promptNameLabel: '提示词名称',
         promptNamePh: '例：暖调杂志风',
         saveName: '保存',
@@ -360,7 +361,7 @@ window.__ModuleLoader__.load({
         appearance: '外观',
         accentHint: '强调色会立刻应用到整个 Harness 界面并记住选择。',
         aboutTitle: '关于',
-        aboutBody: '这是专属工作台插件：Host 侧在本机代理图片接口（Key 只保存在本机配置文件），Client 侧提供工作台页面。模特四视图、商品图与场景图会按顺序作为 /images/edits 的多张参考图发送（最多 6 张：1 模特四视图 + 4 商品图 + 1 场景图）；未上传任何参考图时走文生图 /images/generations。',
+        aboutBody: '这是专属工作台插件：Host 侧在本机代理图片接口（Key 只保存在本机配置文件），Client 侧提供工作台页面。商品参考图（最多 4 张）会按上传顺序作为 /images/edits 的多张参考图发送，第 1 张视为正面主图；未上传商品参考图时走文生图 /images/generations。模特与背景都只用文字描述。',
         // 上传 / 队列 / 持久化的提示语（原先散落在组件里的硬编码中文）
         pickImageFormat: '请选择 PNG / JPG / WebP 图片',
         refImageTooLarge: '参考图需小于 8MB',
@@ -594,7 +595,7 @@ window.__ModuleLoader__.load({
         showHint: 'The selected framing replaces the composition segment at the start of the prompt with a single JSON block (never spliced into the text). The model may still drift slightly.',
         fExtraPrompt: 'Custom prompt (lighting / style)',
         fExtraPromptPh: 'e.g. soft rim light, warm tones, editorial mood, film grain',
-        builtinPromptName: 'Strict product fidelity V2.3 (built-in · JSON)',
+        builtinPromptName: 'Strict product fidelity V2.4 (built-in · JSON)',
         builtinPromptsTitle: 'Built-in prompts',
         builtinPromptsHint: 'Built-in prompts are appended automatically while “Strict product fidelity” is on. The rules are a JSON block now (same style as the framing constraint, duplicate wording removed); edits are validated as JSON on save and can be restored to default at any time.',
         fidelityJsonInvalid: 'The fidelity rules must be a valid JSON object: check braces, quotes and commas',
@@ -602,8 +603,8 @@ window.__ModuleLoader__.load({
         restoreDefault: 'Restore default',
         fidelityModified: 'Customized',
         fidelityDefault: 'Default',
-        strictFidelity: 'Strict product fidelity (built-in V2.3 · JSON)',
-        strictFidelityHint: 'Appends the built-in fidelity JSON: color, fabric, cut, structure and details are locked; product accuracy beats visual polish',
+        strictFidelity: 'Strict product fidelity (built-in V2.4 · JSON)',
+        strictFidelityHint: 'Appends the built-in fidelity JSON while a product reference is attached: color, fabric, cut, structure and details are locked; product accuracy beats visual polish',
         promptNameLabel: 'Prompt name',
         promptNamePh: 'e.g. warm editorial',
         saveName: 'Save',
@@ -625,7 +626,7 @@ window.__ModuleLoader__.load({
         visionIncomplete: 'Recognition: the vision endpoint is incomplete (base URL or model missing)',
         lockHint: 'Recognition uses the strict 12-feature product lock; the result is written as JSON into the description and the generation prompt',
         fProductRef: 'Product reference (optional)',
-        fProductRefHint: 'Multiple photos allowed (front/back/detail); sent as product references',
+        fProductRefHint: 'Multiple photos allowed (front/back/detail); sent as product references, the first one is the front view',
         fProductRefAdd: 'Upload product',
         productCount: 'uploaded',
         refsSavedHint: 'Saved automatically; cleared when removed',
@@ -716,7 +717,7 @@ window.__ModuleLoader__.load({
         appearance: 'Appearance',
         accentHint: 'The accent applies to the whole Harness UI immediately and is remembered.',
         aboutTitle: 'About',
-        aboutBody: 'Personal workbench plugin: the Host half proxies the image API locally (the key stays in a local config file); the Client half renders this page. The model sheet, product photos and scene photo are sent in order as multiple references to /images/edits (up to 6: 1 model sheet + 4 product photos + 1 scene photo); without references it uses text-to-image /images/generations.',
+        aboutBody: 'Personal workbench plugin: the Host half proxies the image API locally (the key stays in a local config file); the Client half renders this page. Product photos (up to 4) are sent in upload order as multiple references to /images/edits, the first one being the front view; without a product photo it uses text-to-image /images/generations. The model and the background are described in words only.',
         // Upload / queue / persistence wording (previously hardcoded Chinese)
         pickImageFormat: 'Choose a PNG / JPG / WebP image',
         refImageTooLarge: 'Reference photos must be under 8MB each',
@@ -786,6 +787,9 @@ window.__ModuleLoader__.load({
           取景: '画面顶部从模特颈部开始，头部完全位于画面之外',
           必定出现: ['颈部', '肩部', '胸部', '腰部', '臀部', '双腿', '商品裤子（腰头、门襟、口袋、裤腿与裤脚）'],
           画面之外绝不出现: ['头部', '面部', '五官', '眼睛', '鼻子', '嘴巴', '耳朵', '头发', '头顶', '额头', '下巴'],
+          // Without an explicit occupancy the model keeps headroom "just in case",
+          // which is the other way a head sneaks back into a neck crop.
+          人物占比: '颈部到裤脚占满画面高度，画面顶部不留多余空间',
           商品完整性: '商品从腰头到裤脚完整入镜，不被裁切或遮挡',
         },
       },
@@ -794,23 +798,23 @@ window.__ModuleLoader__.load({
     // aspect chips selects which size table is used for the request.
     const RATIOS = [
       {
-        id: 'square', zh: '方形 1:1', en: 'Square 1:1', prompt: 'square composition',
+        id: 'square', zh: '方形 1:1', en: 'Square 1:1',
         sizes: { '1k': '1024x1024', '2k': '2048x2048', '4k': '4096x4096' },
       },
       {
-        id: 'portrait', zh: '竖版 3:4', en: 'Portrait 3:4', prompt: 'vertical fashion composition',
+        id: 'portrait', zh: '竖版 3:4', en: 'Portrait 3:4',
         sizes: { '1k': '768x1024', '2k': '1536x2048', '4k': '3072x4096' },
       },
       {
-        id: 'landscape', zh: '横版 4:3', en: 'Landscape 4:3', prompt: 'horizontal composition',
+        id: 'landscape', zh: '横版 4:3', en: 'Landscape 4:3',
         sizes: { '1k': '1024x768', '2k': '2048x1536', '4k': '4096x3072' },
       },
       {
-        id: 'portrait-9-16', zh: '竖版 9:16', en: 'Portrait 9:16', prompt: 'vertical 9:16 social-media composition, full-body fashion framing',
+        id: 'portrait-9-16', zh: '竖版 9:16', en: 'Portrait 9:16',
         sizes: { '1k': '576x1024', '2k': '1152x2048', '4k': '2304x4096' },
       },
       {
-        id: 'landscape-16-9', zh: '横版 16:9', en: 'Landscape 16:9', prompt: 'horizontal 16:9 widescreen composition, cinematic fashion framing',
+        id: 'landscape-16-9', zh: '横版 16:9', en: 'Landscape 16:9',
         sizes: { '1k': '1024x576', '2k': '2048x1152', '4k': '4096x2304' },
       },
     ]
@@ -909,15 +913,15 @@ window.__ModuleLoader__.load({
 
 
     /**
-     * Built-in strict product-fidelity module (V2.3, highest priority).
+     * Built-in strict product-fidelity module (V2.4, highest priority).
      * Appended to every prompt while the studio toggle stays on, so the model is
      * forced to reproduce the exact uploaded product instead of a look-alike.
-     * V2.3 is ONE JSON block, the same way the framing constraint is written, and
+     * V2.4 is ONE JSON block, the same way the framing constraint is written, and
      * every rule appears exactly once: the old prose repeated "be faithful" and
      * "do not redesign" in five places, which cost tokens without adding meaning.
      */
     const FIDELITY_RULES = {
-      '保真规则': '商品严格保真 V2.3',
+      '保真规则': '商品严格保真 V2.4',
       '优先级': '最高：商品保真是硬约束，优先于模特动作、服装搭配、摄影光影与画面美观度',
       '唯一依据': '商品参考图（文字描述只补充细节，冲突时以参考图为准）',
       '商品身份': {
@@ -962,6 +966,7 @@ window.__ModuleLoader__.load({
           '完整图': '确定整体版型与结构比例',
           '局部特写': '补充可辨认细节',
         },
+        '顺序': '按上传顺序优先：第 1 张视为正面主图，其后依次视为侧面、背面与细节图；无法判断角色时以第 1 张为准',
         '禁止': ['不同视角的结构被错误镜像、交换或混合', '背面专属设计出现在正面', '正面专属设计出现在背面', '缺少关键视角时虚构不可见的商品设计'],
       },
       '真实穿着': {
@@ -973,14 +978,32 @@ window.__ModuleLoader__.load({
       '完整展示': {
         '取景': '裤腰最顶部至裤脚最底部完整入镜',
         '清晰': ['腰头、纽扣、腰带袢、门襟、口袋', '商品主要设计结构'],
-        '禁止': ['上衣、手部、配饰或其他物体遮挡关键结构', '为构图而裁切、隐藏或修改主要设计'],
+        // Poses assign the hands, and "one hand in the pocket" is a normal pose that
+        // necessarily covers a pocket. Forbidding all hand occlusion fought the pose
+        // text, so only a large deliberate block is forbidden now.
+        '禁止': ['用上衣、手袋或道具大面积遮挡关键结构', '刻意用手掌捂住腰头、门襟或裤脚导致结构不可辨认', '为构图而裁切、隐藏或修改主要设计'],
+        '允许': ['手插兜、手扶裤缝、手拿手机等自然姿态造成的局部遮挡'],
       },
     }
     // Compact in the prompt (one short line, like the framing block) but pretty
     // in the editor, so the block stays cheap to send and still editable by hand.
     const FIDELITY_MODULE = JSON.stringify(FIDELITY_RULES)
+    // V2.3 as it shipped before V2.4 relaxed the hand-occlusion ban and added the
+    // reference-photo order rule. A stored copy that still matches it character for
+    // character was never edited, so it is upgraded instead of pinning the wording
+    // that fought the poses.
+    const LEGACY_FIDELITY_V23 = (() => {
+      const copy = JSON.parse(JSON.stringify(FIDELITY_RULES))
+      // The version label is part of the stored string: without putting it back the
+      // rebuilt copy differs by one character and would never match real user data.
+      copy['保真规则'] = '商品严格保真 V2.3'
+      delete copy['多参考图']['顺序']
+      copy['完整展示']['禁止'] = ['上衣、手部、配饰或其他物体遮挡关键结构', '为构图而裁切、隐藏或修改主要设计']
+      delete copy['完整展示']['允许']
+      return JSON.stringify(copy)
+    })()
     // V2.2 was prose. A stored copy that still matches it was never edited, so it
-    // is upgraded to V2.3 instead of pinning the old wording forever.
+    // is upgraded to the current version instead of pinning the old wording forever.
     const LEGACY_FIDELITY_MODULE = [
       '【商品严格保真规则 V2.2 · 最高优先级】以商品参考图为唯一设计依据，必须生成同一件商品，而非相似款式或重新设计的商品；商品真实性始终高于画面美观度。',
       '商品身份：严格保持原始商品的颜色、材质、纹理、版型、尺寸比例、结构及全部可辨认的设计细节；禁止替换商品、重新设计、增加、删除或擅自修改任何原有商品特征。',
@@ -1007,14 +1030,20 @@ window.__ModuleLoader__.load({
     const DEFAULT_FORM = {
       pose: '',
       show: 'neck',
-      ratio: 'square',
+      // A neck-to-ankle product shot cannot fit in a square: the model shrinks the
+      // figure to make room, which is how a head creeps back into a "neck crop". A
+      // vertical frame is the honest default for this framing.
+      ratio: 'portrait',
       resolution: '2k',
       desc: '',
       modelPrompt: '',
       backgroundPrompt: '',
       extraPrompt: '',
       strictFidelity: true,
-      negative: '模糊、低清晰度、噪点、压缩痕迹、水印、文字、多余手指、变形的手、多手多脚、五官扭曲、严重畸变、背景错乱、背景杂乱、人物与背景融合、穿模、画面透灰不清晰、雾面、过曝、欠曝、色彩失真、偏色、材质错误、商品变形、过度锐化、塑料感',
+      // No face is in frame, so "distorted face" would be a ban on something that
+      // cannot exist; and a street scene legitimately contains shop-sign text, so
+      // the blanket ban on 文字 is written as "overlaid text / watermark" instead.
+      negative: '模糊、低清晰度、噪点、压缩痕迹、叠加文字与水印、多余手指、变形的手、多手多脚、严重畸变、背景错乱、背景杂乱、人物与背景融合、穿模、画面透灰不清晰、雾面、过曝、欠曝、色彩失真、偏色、材质错误、商品变形、过度锐化、塑料感',
       includeNegative: false,
     }
 
@@ -1227,7 +1256,7 @@ window.__ModuleLoader__.load({
     // reference photo is the only authoritative source, the description is
     // only a supplemental cross-check and must never be used to generate,
     // modify or infer the product on its own.
-    const PRODUCT_DESC_PREFIX = '用户上传的真实商品参考图为唯一权威依据。本段文字仅用于细节补充与交叉验证，严禁直接依据文字描述生成、修改或推断商品。若描述与参考图冲突或细节无法确认，必须以参考图可辨认信息为准，禁止虚构、增删或改变商品原始设计。'
+    const PRODUCT_DESC_PREFIX = '用户上传的真实商品参考图是商品款式（颜色、面料、结构与版型）的唯一权威依据：描述里关于这些的文字只用于补充与交叉验证，冲突时以参考图为准，禁止虚构、增删或改变商品原始设计；而模特动作、背景环境与光线等描述照常生效。'
 
     // Notes written at the front of the description by older versions. Saved
     // descriptions and templates still contain them, so they are replaced by
@@ -1879,6 +1908,9 @@ window.__ModuleLoader__.load({
       if (saved && typeof saved.text === 'string' && saved.text.trim()) {
         // An untouched copy of the old prose module is upgraded to the JSON one.
         if (saved.text.trim() === LEGACY_FIDELITY_MODULE.trim()) return FIDELITY_MODULE
+        // Same for an untouched copy of the previous JSON version: the hand-occlusion
+        // rule it carried contradicts "one hand in the pocket" poses.
+        if (saved.text.trim() === LEGACY_FIDELITY_V23.trim()) return FIDELITY_MODULE
         return compactFidelity(saved.text)
       }
       return FIDELITY_MODULE
@@ -1935,15 +1967,19 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Builds the Chinese prompt sent to the image API.
+     * Builds the prompt sent to the image API (Chinese prose by default, English
+     * prose when the Harness locale is English; the built-in JSON blocks stay as
+     * authored).
+     * The studio uploads product references only - there is no model-sheet or
+     * scene upload - so those two flags are gone rather than left unreachable.
      * @param form studio selections
-     * @param hasModelSheet whether a four-view model reference was uploaded
      * @param hasProductRef whether a product reference was uploaded
-     * @param hasSceneRef whether a scene reference was uploaded
      * @param customPoses user-defined poses (id, name, prompt)
      * @param fidelityText strict-product-fidelity module (editable in Settings)
+     * @param lang 'zh' | 'en'
      */
-    function buildPrompt(form, hasModelSheet, hasProductRef, hasSceneRef, customPoses, fidelityText) {
+    function buildPrompt(form, hasProductRef, customPoses, fidelityText, lang) {
+      const en = lang === 'en'
       const rawDescription = form.desc && form.desc.trim() ? form.desc.trim() : ''
       // The reference photo is primary: with product photos attached the
       // description is prefixed with the "supplement only" note. Without
@@ -1951,8 +1987,9 @@ window.__ModuleLoader__.load({
       const description = hasProductRef ? withDescPrefix(rawDescription) : stripDescPrefix(rawDescription)
       const modelPrompt = form.modelPrompt && form.modelPrompt.trim() ? form.modelPrompt.trim() : ''
       const backgroundPrompt = form.backgroundPrompt && form.backgroundPrompt.trim() ? form.backgroundPrompt.trim() : ''
-      // A model appears when a model sheet is uploaded or described by text.
-      const hasModel = Boolean(hasModelSheet) || Boolean(modelPrompt)
+      // The model is described in words only; the framing chips speak about that
+      // described model.
+      const hasModel = Boolean(modelPrompt)
       const customPose = (customPoses || []).find(item => item && item.id === form.pose)
       const poseText = customPose && customPose.prompt ? customPose.prompt.trim() : ''
       // Framing (face visible / crop at neck / crop at chest) only means anything
@@ -1961,71 +1998,89 @@ window.__ModuleLoader__.load({
       const neckCrop = Boolean(framing && framing.id === 'neck')
 
       const parts = []
-      if (hasModelSheet) {
-        // "keep the same face and hair" and "head outside the frame" cannot both
-        // be obeyed, and the model resolves that conflict by drawing the head.
-        // With a neck crop the face clause is therefore dropped from the wording.
-        parts.push(
-          neckCrop
-            ? '专业电商服装摄影，以模特参考图中的同一模特为原型，严格保持其身形、体态、肤色与服装贴合度一致（头部不在画面内，不参考面部与发型）'
-            : '专业电商服装摄影，以模特参考图中的同一模特为原型，严格保持其面部、发型与身形一致',
-        )
-        if (modelPrompt) parts.push(modelPrompt)
-      } else if (modelPrompt) {
-        parts.push(`专业电商服装摄影，模特：${modelPrompt}`)
+      if (modelPrompt) {
+        parts.push(en ? `Professional e-commerce apparel photography, model: ${modelPrompt}` : `专业电商服装摄影，模特：${modelPrompt}`)
       } else {
-        parts.push('专业电商服装摄影')
+        parts.push(en ? 'Professional e-commerce apparel photography' : '专业电商服装摄影')
       }
 
       // The JSON composition block is computed here but is NOT pushed into the
-      // comma-joined Chinese paragraph: it replaces the old composition segment
-      // as a standalone leading block (see below).
+      // comma-joined paragraph: it replaces the old composition segment as a
+      // standalone leading block (see below).
       const framingRules = framing ? JSON.stringify(framing.rules) : ''
 
       if (hasProductRef) {
-        parts.push(
-          hasModel
-            ? `穿着商品参考图中的商品${description ? `，${description}` : ''}`
-            : `展示商品参考图中的商品${description ? `，${description}` : ''}`,
-        )
+        if (en) {
+          parts.push(`${hasModel ? 'wearing' : 'presenting'} the product from the product reference photo${description ? `: ${description}` : ''}`)
+        } else {
+          parts.push(
+            hasModel
+              ? `穿着商品参考图中的商品${description ? `，${description}` : ''}`
+              : `展示商品参考图中的商品${description ? `，${description}` : ''}`,
+          )
+        }
       } else if (description) {
-        parts.push(hasModel ? `穿着${description}` : `展示${description}`)
+        parts.push(en ? `${hasModel ? 'wearing' : 'presenting'} ${description}` : `${hasModel ? '穿着' : '展示'}${description}`)
       } else if (hasModel) {
-        parts.push('展示服装')
+        parts.push(en ? 'presenting the apparel' : '展示服装')
       }
 
       if (poseText) parts.push(poseText)
+      // Backgrounds are described in words; the studio has no scene upload.
       let background = ''
-      if (hasSceneRef) background = '背景采用场景参考图中的环境，保持其背景、道具与氛围'
-      if (backgroundPrompt) background = background ? `${background}，${backgroundPrompt}` : `背景：${backgroundPrompt}`
-      parts.push(background || '干净的纯色影棚背景')
+      if (backgroundPrompt) background = en ? `background: ${backgroundPrompt}` : `背景：${backgroundPrompt}`
+      parts.push(background || (en ? 'clean seamless studio backdrop' : '干净的纯色影棚背景'))
       if (form.extraPrompt && form.extraPrompt.trim()) parts.push(form.extraPrompt.trim())
       // A "full-body fashion framing" line fights the neck crop: the model satisfies
       // the whole-body request by including the head. The crop rule wins.
-      const ratioText = neckCrop
-        ? String(ZH_RATIO[form.ratio] || '').replace('全身时装取景', '颈部以下取景')
-        : ZH_RATIO[form.ratio]
-      if (ratioText) parts.push(ratioText)
-      // The aspect ratio + resolution chips decide the real output size; write
-      // that spec into the prompt as well so the model composes for it.
-      const outputSpec = resolveOutputSpec(form)
-      if (outputSpec.width && outputSpec.height) {
-        parts.push(`输出规格：${outputSpec.ratio.zh}，成图尺寸 ${outputSpec.width}×${outputSpec.height} 像素（${outputSpec.resolution.zh}）`)
+      if (en) {
+        const ratioOption = findOption(RATIOS, form.ratio)
+        parts.push(neckCrop ? `${ratioOption.en} composition, neck-down framing` : `${ratioOption.en} composition`)
+      } else {
+        const ratioText = neckCrop
+          ? String(ZH_RATIO[form.ratio] || '').replace('全身时装取景', '颈部以下取景')
+          : ZH_RATIO[form.ratio]
+        if (ratioText) parts.push(ratioText)
       }
-      parts.push('85mm 镜头拍摄，f/2.8 大光圈，画面清晰锐利，面料纹理与缝线细节清晰；专业修图，商业级品质，真实摄影质感，高分辨率')
-      parts.push('商品颜色、材质、版型与结构以商品参考图为准')
+      // The pixel size is decided by the request, not by the prompt: writing
+      // "1152x2048 pixels" into the text only added a claim the model cannot honour.
+      // A user may also ask the opposite ("背景不要虚化"), so the keyword only
+      // counts when no negation appears *before* it inside the same clause.
+      const wantsShallow = `${form.extraPrompt || ''}，${backgroundPrompt}`
+        .split(/[，,;；。\n]/)
+        .some(clause => {
+          const hit = clause.search(/浅景深|虚化|bokeh/i)
+          return hit >= 0 && !/不|无|别|勿|避免|禁止/.test(clause.slice(0, hit))
+        })
+      if (en) {
+        parts.push(wantsShallow
+          ? 'shot on an 85mm lens at f/2.8, subject sharp with a softly blurred background; professional retouching, commercial quality, real photographic texture, high resolution'
+          : 'shot on an 85mm lens at f/5.6, subject and product sharp throughout, fabric texture and stitching legible; professional retouching, commercial quality, real photographic texture, high resolution')
+      } else {
+        parts.push(wantsShallow
+          ? '85mm 镜头拍摄，f/2.8 大光圈，主体清晰、背景柔和虚化；专业修图，商业级品质，真实摄影质感，高分辨率'
+          : '85mm 镜头拍摄，f/5.6 光圈，主体（模特与商品）全程清晰，面料纹理与缝线细节可辨；专业修图，商业级品质，真实摄影质感，高分辨率')
+      }
+      // The fidelity JSON already states that the product reference wins, so this
+      // sentence is only needed when that module is off (no duplicate claims).
+      if (!(form.strictFidelity && hasProductRef)) parts.push(en ? 'product colour, material, cut and structure follow the product reference photo' : '商品颜色、材质、版型与结构以商品参考图为准')
 
-      const paragraph = `${parts.filter(Boolean).join('，')}。`
+      const paragraph = en ? `${parts.filter(Boolean).join(', ')}.` : `${parts.filter(Boolean).join('，')}。`
       // The JSON block replaces the old composition segment and leads the
       // prompt on its own line: written exactly once, never comma-spliced into
-      // the Chinese paragraph and never repeated at the tail.
+      // the paragraph and never repeated at the tail.
       let text = framingRules ? `${framingRules}\n${paragraph}` : paragraph
-      if (form.strictFidelity) text += `\n\n${fidelityText || FIDELITY_MODULE}`
+      // The fidelity module claims "the product reference photo is the only source
+      // of truth": without an uploaded product photo that claim is false, so it is
+      // only appended when such a photo really exists.
+      if (form.strictFidelity && hasProductRef) text += `\n\n${fidelityText || FIDELITY_MODULE}`
       // Recency decides: the leading JSON block alone lost to the long prose after
       // it, so the crop rule is restated as the last instruction (a visible face
       // was the symptom). It stays out of the negative list, which is user content.
       if (neckCrop) {
-        text += '\n构图硬性要求：画面从模特颈部开始，头部、面部、五官与头发完全不出现，画面内不要出现脸。'
+        text += en
+          ? '\nHard framing requirement: the frame starts at the model\'s neck; head, face, facial features and hair never appear and no face is drawn.'
+          : '\n构图硬性要求：画面从模特颈部开始，头部、面部、五官与头发完全不出现，画面内不要出现脸。'
       }
       if (form.includeNegative && form.negative && form.negative.trim()) {
         text += `\n【严禁出现】${form.negative.trim()}。`
@@ -3068,8 +3123,8 @@ window.__ModuleLoader__.load({
       }, [])
 
       const prompt = useMemo(
-        () => buildPrompt(form, false, productRefs.length > 0, false, customPoses, fidelityText),
-        [form, productRefs, customPoses, fidelityText],
+        () => buildPrompt(form, productRefs.length > 0, customPoses, fidelityText, lang),
+        [form, productRefs, customPoses, fidelityText, lang],
       )
       const promptValue = customPrompt === null ? prompt : customPrompt
       const referenceCount = productRefs.length
@@ -3714,9 +3769,10 @@ window.__ModuleLoader__.load({
           .filter(Boolean)
           .map(item => ({ dataBase64: item.dataBase64, mediaType: item.mediaType, name: item.name }))
         // The requested size is always computed from the aspect-ratio +
-        // resolution chips; there is no stored default size any more.
+        // resolution chips; the fallback matches the default form (portrait 2K),
+        // never the old square default.
         const outputSpec = resolveOutputSpec(form)
-        const size = outputSpec.size || '2048x2048'
+        const size = outputSpec.size || '1536x2048'
         const payload = {
           prompt: text,
           size,

@@ -17,8 +17,8 @@
  *   POST /extract-size      -> size-chart table recognition (vision)
  *   GET  /history           -> recent generated files
  *   GET  /image             -> serve one generated file
- *   GET/POST/DELETE /ref/model, /ref/scene, /ref/logo -> single persisted ref
- *   GET/POST/DELETE /ref/products                    -> persisted product ref set
+ *   GET/POST/DELETE /ref/logo     -> single persisted ref (brand logo)
+ *   GET/POST/DELETE /ref/products -> persisted product ref set
  *   GET  /ref-image         -> serve a persisted reference image
  *   POST /reveal            -> open the output folder
  *   POST /poster            -> save a size-chart PNG into a chosen folder
@@ -1898,9 +1898,11 @@ async function serveImage(req, res) {
 // ------------------------------------------------- persisted reference images
 // References that should survive page reloads are written to
 // <profile>/personal-workbench/refs/ and served back through /ref-image:
-//   model -> model-sheet.<ext>  (four-view turnaround of the model)
-//   scene -> scene.<ext>        (background the user keeps reusing)
 //   logo  -> logo.<ext>         (brand logo used by the size-chart poster)
+//   model -> model-sheet.<ext>  (legacy: the studio has no model-sheet upload any
+//                                more, so no route writes this kind; the entry is
+//                                kept so old files can still be listed and cleaned)
+//   scene -> scene.<ext>        (legacy: same as above, studio keeps no scene ref)
 const REF_KINDS = {
   model: { base: 'model-sheet', pattern: /^model-sheet\.(png|jpe?g|webp)$/i },
   scene: { base: 'scene', pattern: /^scene\.(png|jpe?g|webp)$/i },
@@ -2123,7 +2125,7 @@ async function serveRefImage(req, res) {
 }
 
 /**
- * GET/POST/DELETE for one persisted reference kind ('model' or 'scene').
+ * GET/POST/DELETE for one persisted reference kind ('logo').
  */
 function makeRefHandler(kind) {
   return async (req, res) => {
@@ -2854,10 +2856,6 @@ function createHandlers(ctx) {
       sendJson(res, 200, { ok: true, ...result })
     },
 
-    refModel: makeRefHandler('model'),
-
-    refScene: makeRefHandler('scene'),
-
     refLogo: makeRefHandler('logo'),
 
     async refProducts(req, res) {
@@ -3254,8 +3252,6 @@ export function apply(ctx) {
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/extract-size`, handler: wrap(handlers.extractSize) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/history`, handler: wrap(handlers.history) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/image`, handler: wrap(serveImage) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref/model`, handler: wrap(handlers.refModel) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref/scene`, handler: wrap(handlers.refScene) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref/logo`, handler: wrap(handlers.refLogo) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref/products`, handler: wrap(handlers.refProducts) }),
       ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/ref-image`, handler: wrap(serveRefImage) }),
