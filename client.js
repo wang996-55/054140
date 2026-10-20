@@ -120,10 +120,9 @@ window.__ModuleLoader__.load({
         templateUpdated: '模板已更新',
         templateApplied: '已应用模板',
         templateDesc: '商品描述',
-        templatePrompt: '自定义提示词',
         templateDefaultName: '模板',
         promptLibraryTitle: '提示词库',
-        promptLibraryHint: '集中管理可复用提示词：风格/画面、模特、背景三类。在生图页各字段点「保存为复用提示词」即可添加。',
+        promptLibraryHint: '可复用提示词只在这里创建、编辑与删除；生图页的「模特提示词 / 背景提示词 / 自定义提示词」都从这里点选，不能再直接输入。',
         promptKindStyle: '风格 / 画面',
         promptKindModel: '模特',
         promptKindScene: '背景',
@@ -131,17 +130,27 @@ window.__ModuleLoader__.load({
         promptTextLabel: '提示词内容',
         promptEditTitle: '编辑提示词',
         promptNewTitle: '新建提示词',
-        newPrompt: '＋ 新建提示词',
-        promptLibraryEmpty: '还没有提示词。在生图页填好内容后点「保存为复用提示词」。',
+        promptLibraryEmpty: '还没有提示词，点右上角「＋ 新建提示词」创建。',
         promptSaved: '提示词已保存',
         promptUpdated: '提示词已更新',
         promptManage: '提示词库',
+        promptSelectEmpty: '提示词库里还没有这类提示词。',
+        promptClear: '清除',
+        promptNewForKind: '＋ 新建提示词',
         fModelPrompt: '模特提示词（可选）',
         fModelPromptPh: '例：25 岁亚洲女性，黑色长直发，冷白皮，身材高挑，自然淡妆',
         fBackgroundPrompt: '背景提示词（可选）',
         fBackgroundPromptPh: '例：城市街道傍晚，暖色逆光，浅景深，地面有轻微反光',
-        modelPromptHint: '用文字描述模特形象（脸型、发型、肤色、身材等），会写入生成提示词',
-        backgroundPromptHint: '用文字描述背景环境（场景、光线、色调等），会写入生成提示词',
+        promptOnlyHint: '这些提示词只能从「提示词库」点选；新建与修改都在提示词库里完成。',
+        promptOrphan: '当前提示词不在提示词库里（来自模板或旧版本），因此没有高亮按钮；可点「存入库」或「清除」。',
+        promptAdopt: '存入库',
+        promptArchived: '已存入提示词库',
+        promptDupBlocked: '该类别下已有内容完全相同的提示词，请先改内容或删掉旧的那条。',
+        promptDraftBusy: '正在编辑一条未保存的提示词，请先「保存」或「取消」。',
+        promptDeleted: '提示词已删除',
+        promptDeletedCleared: '提示词已删除，生图页对应字段已清空',
+        promptLegacySuffix: '（旧版）',
+        promptMigrated: '已把生图页里原有的提示词转入提示词库',
         fPose: '姿态',
         fPoseCustom: '＋ 自定义动作',
         poseEmptyHint: '暂无自定义动作。点下方「＋ 自定义动作」进入动作库添加',
@@ -162,10 +171,9 @@ window.__ModuleLoader__.load({
         poseSelected: '当前选中',
         poseSaved: '已保存',
         fShow: '模特展示',
-        showHint: '裁切位置会作为硬性构图约束写入提示词（开头与结尾各强调一次）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
-        fExtraPrompt: '自定义提示词（光线 / 风格等自由填写）',
+        showHint: '选择后会以 JSON 构图约束覆盖提示词开头的构图段（只写入一次，不与中文提示词拼接）；模型仍可能轻微偏离，可勾选下方「严禁出现」后再补充。',
+        fExtraPrompt: '自定义提示词（光线 / 风格等）',
         fExtraPromptPh: '例：柔和侧逆光，暖色调，杂志高级感，film grain，35mm 质感',
-        saveReusable: '＋ 保存为可复用提示词',
         builtinPromptName: '男裤严格保真 V2.2（内置）',
         builtinPromptsTitle: '内置提示词',
         builtinPromptsHint: '内置提示词在勾选「商品严格保真」时自动附加到生成提示词。点「编辑」可修改规则内容，修改后一直生效，也可随时恢复默认。',
@@ -229,7 +237,7 @@ window.__ModuleLoader__.load({
         errTimeout: '接口响应超时：稍后重试，或换用响应更快的接口。',
         queueStopped: '接口余额/鉴权异常，已停止剩余排队任务；处理后重新生成即可。',
         needKey: '请先在「设置」里填写 API Key 和接口地址。',
-        needPrompt: '请先填写提示词或选择一个模板。',
+        needPrompt: '请先填写商品描述、从提示词库选择提示词，或应用一个模板。',
         resultTitle: '生成结果',
         resultEmpty: '生成结果会显示在这里。',
         historyTitle: '历史图片',
@@ -375,10 +383,9 @@ window.__ModuleLoader__.load({
         templateUpdated: 'Template updated',
         templateApplied: 'Template applied',
         templateDesc: 'Product description',
-        templatePrompt: 'Custom prompt',
         templateDefaultName: 'Template',
         promptLibraryTitle: 'Prompt library',
-        promptLibraryHint: 'All reusable prompts in one place: style/framing, model and background. Add them from the studio with “Save as reusable prompt”.',
+        promptLibraryHint: 'Reusable prompts are created, edited and deleted only here. The studio’s model / background / custom prompt fields pick entries from this library and no longer accept typed text.',
         promptKindStyle: 'Style / framing',
         promptKindModel: 'Model',
         promptKindScene: 'Background',
@@ -386,17 +393,27 @@ window.__ModuleLoader__.load({
         promptTextLabel: 'Prompt text',
         promptEditTitle: 'Edit prompt',
         promptNewTitle: 'New prompt',
-        newPrompt: '+ New prompt',
-        promptLibraryEmpty: 'No prompts yet. Fill a field in the studio, then press “Save as reusable prompt”.',
+        promptLibraryEmpty: 'No prompts yet. Press “+ New prompt” above to create one.',
         promptSaved: 'Prompt saved',
         promptUpdated: 'Prompt updated',
         promptManage: 'Prompt library',
+        promptSelectEmpty: 'This library has no entry of this kind yet.',
+        promptClear: 'Clear',
+        promptNewForKind: '+ New prompt',
         fModelPrompt: 'Model prompt (optional)',
         fModelPromptPh: 'e.g. 25-year-old Asian woman, long straight black hair, fair skin, tall, natural makeup',
         fBackgroundPrompt: 'Background prompt (optional)',
         fBackgroundPromptPh: 'e.g. city street at dusk, warm backlight, shallow depth of field, slight ground reflection',
-        modelPromptHint: 'Describe the model in text (face, hair, skin tone, build); it is written into the prompt.',
-        backgroundPromptHint: 'Describe the background in text (scene, light, mood); it is written into the prompt.',
+        promptOnlyHint: 'These prompts can only be picked from the prompt library; create and edit them there.',
+        promptOrphan: 'This prompt is not in the library (it came from a template or an older version), so no chip is highlighted. Save it to the library or clear it.',
+        promptAdopt: 'Save to library',
+        promptArchived: 'Saved to the prompt library',
+        promptDupBlocked: 'This category already has an entry with exactly the same text. Edit that one or delete it first.',
+        promptDraftBusy: 'An unsaved prompt is being edited — press Save or Cancel first.',
+        promptDeleted: 'Prompt deleted',
+        promptDeletedCleared: 'Prompt deleted; the studio field was cleared',
+        promptLegacySuffix: ' (legacy)',
+        promptMigrated: 'Existing studio prompts were imported into the prompt library',
         fPose: 'Pose',
         fPoseCustom: '+ Custom pose',
         poseEmptyHint: 'No custom actions yet. Use “+ Custom pose” below to open the action library.',
@@ -417,10 +434,9 @@ window.__ModuleLoader__.load({
         poseSelected: 'Selected',
         poseSaved: 'Saved',
         fShow: 'Model framing',
-        showHint: 'The crop is written into the prompt as a hard composition constraint (stated at the start and the end). The model may still drift slightly.',
-        fExtraPrompt: 'Custom prompt (lighting, style, anything)',
+        showHint: 'The selected framing replaces the composition segment at the start of the prompt with a single JSON block (never spliced into the text). The model may still drift slightly.',
+        fExtraPrompt: 'Custom prompt (lighting / style)',
         fExtraPromptPh: 'e.g. soft rim light, warm tones, editorial mood, film grain',
-        saveReusable: '+ Save as reusable prompt',
         builtinPromptName: 'Strict product fidelity V2.2 (built-in)',
         builtinPromptsTitle: 'Built-in prompts',
         builtinPromptsHint: 'Built-in prompts are appended automatically while “Strict product fidelity” is on. Edit the rules here; changes stay in effect and can be restored to default at any time.',
@@ -484,7 +500,7 @@ window.__ModuleLoader__.load({
         errTimeout: 'The API timed out: retry later, or switch to a faster endpoint.',
         queueStopped: 'Balance/auth error on the active API: remaining queued jobs were stopped. Fix it and generate again.',
         needKey: 'Set the API endpoint and key in Settings first.',
-        needPrompt: 'Write a prompt or pick a template first.',
+        needPrompt: 'Fill in the product description, pick a prompt from the library, or apply a template first.',
         resultTitle: 'Results',
         resultEmpty: 'Generated images appear here.',
         historyTitle: 'History',
@@ -548,32 +564,20 @@ window.__ModuleLoader__.load({
     }
 
     // ------------------------------------------------------------- constants
-    // Model framing: whether the face is visible and where the frame starts.
-    // `clause` is the normal description; `hard` / `review` / `forbidden` turn the
-    // choice into a hard composition constraint that is stated twice (head and
-    // tail of the prompt). A single mid-sentence hint gets outvoted by the long
-    // product-fidelity block, which is exactly why the crop used to be ignored.
+    // Model framing is fixed to a crop at the neck: the head is always outside
+    // the frame. The rule is written into the prompt as ONE JSON block that
+    // replaces the old composition paragraph - it is not a comma-spliced prose
+    // clause and it is not repeated at the tail.
     const SHOW = [
       {
-        id: 'face', zh: '露脸', en: 'show face',
-        clause: '模特面部完整可见，自然表情，看向镜头',
-        hard: '',
-        review: '',
-        forbidden: '',
-      },
-      {
         id: 'neck', zh: '从脖子处裁切', en: 'crop at neck',
-        clause: '画面从颈部以下取景，头部裁出画面，不露脸',
-        hard: '【构图硬约束｜优先级高于画面美观】画面从颈部以下取景：模特头部完全位于画面之外，画面顶部即模特颈部，不得出现头部、面部、五官与发型；商品仍须从腰头到裤脚完整入镜',
-        review: '【构图复核｜优先级高于商品完整展示与画面美观｜违反即不合格】成片不得出现模特头部与面部，头部入镜即视为错误输出。',
-        forbidden: '画面出现模特头部、面部、五官、眼睛、鼻子、嘴巴、发型',
-      },
-      {
-        id: 'chest', zh: '从胸部处裁切', en: 'crop at chest',
-        clause: '画面从胸部以下取景，头颈均裁出画面，不露脸',
-        hard: '【构图硬约束｜优先级高于画面美观】画面从胸部以下取景：模特头部与颈部完全位于画面之外，画面顶部即模特胸部，不得出现头部、颈部、面部、五官与发型；商品仍须从腰头到裤脚完整入镜',
-        review: '【构图复核｜优先级高于商品完整展示与画面美观｜违反即不合格】成片不得出现模特头部、颈部与面部，头颈入镜即视为错误输出。',
-        forbidden: '画面出现模特头部、颈部、面部、五官、眼睛、鼻子、嘴巴、发型',
+        rules: {
+          模特展示: '从脖子处裁切',
+          取景: '画面顶部从模特颈部开始，头部完全位于画面之外',
+          必定出现: ['颈部', '肩部', '胸部', '腰部', '臀部', '双腿', '商品裤子（腰头、门襟、口袋、裤腿与裤脚）'],
+          必定不会出现: ['头部', '面部', '五官', '眼睛', '鼻子', '嘴巴', '耳朵', '头发', '头顶', '额头', '下巴'],
+          商品完整性: '商品从腰头到裤脚完整入镜，不被裁切或遮挡',
+        },
       },
     ]
     // All ratios are available at 1K / 2K / 4K; the resolution chip below the
@@ -724,7 +728,7 @@ window.__ModuleLoader__.load({
 
     const DEFAULT_FORM = {
       pose: '',
-      show: 'face',
+      show: 'neck',
       ratio: 'square',
       resolution: '2k',
       desc: '',
@@ -864,20 +868,52 @@ window.__ModuleLoader__.load({
     const LEGACY_POSES = ['front', 'side', 'walk', 'sit', 'close']
 
     // Injected at the very front of the product description: the uploaded
-    // reference photo stays the primary source, the description is only a
-    // supplemental detail check and must never be used alone to generate.
-    const PRODUCT_DESC_PREFIX = '上传的商品参考图为最高优先级，本段只做细节补充验证，严禁直接使用本段描述直接生成。'
+    // reference photo is the only authoritative source, the description is
+    // only a supplemental cross-check and must never be used to generate,
+    // modify or infer the product on its own.
+    const PRODUCT_DESC_PREFIX = '用户上传的真实商品参考图为唯一权威依据。本段文字仅用于细节补充与交叉验证，严禁直接依据文字描述生成、修改或推断商品。若描述与参考图冲突或细节无法确认，必须以参考图可辨认信息为准，禁止虚构、增删或改变商品原始设计。'
 
+    // Notes written at the front of the description by older versions. Saved
+    // descriptions and templates still contain them, so they are replaced by
+    // the current wording instead of stacking two contradictory notes.
+    const LEGACY_DESC_PREFIXES = [
+      '上传的商品参考图为最高优先级，本段只做细节补充验证，严禁直接使用本段描述直接生成。',
+    ]
+
+    const DESC_PREFIXES = [PRODUCT_DESC_PREFIX].concat(LEGACY_DESC_PREFIXES)
+
+    /** Returns the known note found at the very front of the text, if any. */
+    function descPrefixAt(value) {
+      for (const prefix of DESC_PREFIXES) {
+        if (value.indexOf(prefix) === 0) return prefix
+      }
+      return ''
+    }
+
+    /** Length of the longest shared beginning with a known note, used to
+     *  recognise a partially deleted note (e.g. the user removed its tail). */
+    function damagedDescPrefixLength(value) {
+      let shared = 0
+      for (const prefix of DESC_PREFIXES) {
+        let length = 0
+        while (length < prefix.length && length < value.length && value.charAt(length) === prefix.charAt(length)) {
+          length += 1
+        }
+        if (length > shared) shared = length
+      }
+      return shared
+    }
+
+    /** Adds the reference-first note. A note already at the front - including
+     *  the one saved by an older version - is replaced by the current wording,
+     *  never duplicated. */
     function withDescPrefix(text) {
       const value = String(text || '').trim()
       if (!value) return ''
       if (value.indexOf(PRODUCT_DESC_PREFIX) === 0) return value
-      // A partially deleted leading note is repaired, never duplicated: find the
-      // longest shared beginning and treat it as the damaged note.
-      let shared = 0
-      while (shared < PRODUCT_DESC_PREFIX.length && shared < value.length && value.charAt(shared) === PRODUCT_DESC_PREFIX.charAt(shared)) {
-        shared += 1
-      }
+      const body = stripDescPrefix(value)
+      if (body !== value) return body ? `${PRODUCT_DESC_PREFIX}\n${body}` : PRODUCT_DESC_PREFIX
+      const shared = damagedDescPrefixLength(value)
       if (shared >= 6) {
         const rest = value.slice(shared).replace(/^\s+/, '')
         return rest ? `${PRODUCT_DESC_PREFIX}\n${rest}` : PRODUCT_DESC_PREFIX
@@ -885,12 +921,27 @@ window.__ModuleLoader__.load({
       return `${PRODUCT_DESC_PREFIX}\n${value}`
     }
 
+    /** Removes every known reference-first note from the front. */
     function stripDescPrefix(text) {
-      const value = String(text || '').trim()
-      if (value.indexOf(PRODUCT_DESC_PREFIX) === 0) {
-        return value.slice(PRODUCT_DESC_PREFIX.length).trim()
+      let value = String(text || '').trim()
+      let prefix = descPrefixAt(value)
+      while (prefix) {
+        value = value.slice(prefix.length).replace(/^\s+/, '')
+        prefix = descPrefixAt(value)
       }
-      return value
+      return value.trim()
+    }
+
+    /** Replaces an old note at the front with the current wording while keeping
+     *  the body byte-for-byte; used on load before the photo set is known. */
+    function upgradeLegacyDescNote(text) {
+      const value = String(text || '')
+      for (const legacy of LEGACY_DESC_PREFIXES) {
+        if (value.indexOf(legacy) === 0) {
+          return PRODUCT_DESC_PREFIX + value.slice(legacy.length)
+        }
+      }
+      return text
     }
 
     // The 12 dimensions the vision model reports; recognition results are kept
@@ -952,6 +1003,10 @@ window.__ModuleLoader__.load({
       for (const key of ['desc', 'modelPrompt', 'backgroundPrompt', 'extraPrompt', 'negative']) {
         if (typeof merged[key] !== 'string') merged[key] = DEFAULT_FORM[key]
       }
+      // A description saved by an older version starts with the previous
+      // reference note: swap in the current wording right away so the removed
+      // sentence cannot linger in the description field.
+      if (merged.desc) merged.desc = upgradeLegacyDescNote(merged.desc)
       if (typeof merged.pose !== 'string') merged.pose = ''
       if (!RATIOS.some(item => item.id === merged.ratio)) merged.ratio = DEFAULT_FORM.ratio
       if (!RESOLUTIONS.some(item => item.id === merged.resolution)) merged.resolution = DEFAULT_FORM.resolution
@@ -1040,6 +1095,56 @@ window.__ModuleLoader__.load({
       return FIDELITY_MODULE
     }
 
+    /** The studio keeps a copy of the picked library entry in these fields; a
+     *  library edit/delete rewrites (or clears) every field still holding it.
+     *  Each field belongs to exactly one library kind, so a rewrite is scoped to
+     *  that kind: two entries that happen to share the same text stay separate. */
+    const PROMPT_FIELD_KINDS = {
+      modelPrompt: 'model',
+      backgroundPrompt: 'scene',
+      extraPrompt: 'style',
+    }
+    const PROMPT_FIELD_KEYS = ['modelPrompt', 'backgroundPrompt', 'extraPrompt']
+
+    function promptTextPatch(form, from, to, kind) {
+      const patch = {}
+      if (!form || !from) return patch
+      for (const key of PROMPT_FIELD_KEYS) {
+        if (kind && PROMPT_FIELD_KINDS[key] !== kind) continue
+        if (form[key] === from) patch[key] = to
+      }
+      return patch
+    }
+
+    /**
+     * Prompt fields used to accept typed text, and templates saved back then carry
+     * that text as a snapshot. Such a value has no chip now and the studio no
+     * longer prints prompt text, so it is imported into the library once instead of
+     * turning into an invisible prompt that still reaches the generator.
+     * @returns library entries missing for the prompt text currently in the form
+     */
+    function legacyPromptEntries(form, prompts, suffix) {
+      const entries = []
+      if (!form) return entries
+      const stamp = Date.now().toString(36)
+      for (const key of PROMPT_FIELD_KEYS) {
+        const value = String(form[key] || '').trim()
+        if (!value) continue
+        const kind = PROMPT_FIELD_KINDS[key]
+        const known = (prompts || []).some(item => (
+          (item.kind || 'style') === kind && String(item.text || '').trim() === value
+        ))
+        if (known) continue
+        entries.push({
+          id: `pr-${stamp}${entries.length}${Math.random().toString(36).slice(2, 5)}`,
+          kind,
+          name: `${value.slice(0, 16)}${suffix || ''}`,
+          text: value,
+        })
+      }
+      return entries
+    }
+
     /**
      * Builds the Chinese prompt sent to the image API.
      * @param form studio selections
@@ -1075,10 +1180,10 @@ window.__ModuleLoader__.load({
         parts.push('专业电商商品摄影')
       }
 
-      // The hard framing rule goes first so later style/product clauses cannot
-      // bury it; it is repeated after the fidelity block as a "review" line, and
-      // the crop options add a dedicated forbidden line at the very end.
-      if (framing && framing.hard) parts.push(framing.hard)
+      // The JSON composition block is computed here but is NOT pushed into the
+      // comma-joined Chinese paragraph: it replaces the old composition segment
+      // as a standalone leading block (see below).
+      const framingRules = framing ? JSON.stringify(framing.rules) : ''
 
       if (hasProductRef) {
         parts.push(
@@ -1093,7 +1198,6 @@ window.__ModuleLoader__.load({
       }
 
       if (poseText) parts.push(poseText)
-      if (framing && framing.clause) parts.push(framing.clause)
       let background = ''
       if (hasSceneRef) background = '背景采用场景参考图中的环境，保持其背景、道具与氛围'
       if (backgroundPrompt) background = background ? `${background}，${backgroundPrompt}` : `背景：${backgroundPrompt}`
@@ -1109,13 +1213,15 @@ window.__ModuleLoader__.load({
       parts.push('85mm 镜头拍摄，f/2.8 大光圈，画面清晰锐利，面料纹理与缝线细节清晰；专业修图，商业级品质，真实摄影质感，高分辨率')
       parts.push('商品颜色、材质、版型与结构以商品参考图为准')
 
-      let text = `${parts.filter(Boolean).join('，')}。`
+      const paragraph = `${parts.filter(Boolean).join('，')}。`
+      // The JSON block replaces the old composition segment and leads the
+      // prompt on its own line: written exactly once, never comma-spliced into
+      // the Chinese paragraph and never repeated at the tail.
+      let text = framingRules ? `${framingRules}\n${paragraph}` : paragraph
       if (form.strictFidelity) text += `\n\n${fidelityText || FIDELITY_MODULE}`
-      if (framing && framing.review) text += `\n${framing.review}`
       if (form.includeNegative && form.negative && form.negative.trim()) {
         text += `\n【严禁出现】${form.negative.trim()}。`
       }
-      if (framing && framing.forbidden) text += `\n【构图禁止】${framing.forbidden}。`
       return text
     }
 
@@ -1542,6 +1648,104 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // Quiet selectable chip used for library entries (templates, prompts).
+    const QUIET_CHIP = {
+      padding: '5px 11px',
+      borderRadius: 999,
+      border: '1px solid var(--dsw-alias-border-l1)',
+      background: 'var(--dsw-alias-bg-layer-2)',
+      color: 'var(--dsw-alias-label-primary)',
+      fontSize: 12,
+      fontWeight: 500,
+      cursor: 'pointer',
+    }
+
+    const ACTIVE_CHIP = {
+      ...QUIET_CHIP,
+      borderColor: 'var(--dsw-alias-brand-primary)',
+      background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)',
+      color: 'var(--dsw-alias-brand-primary)',
+    }
+
+    // Prompt text is authored only in the prompt library, so every place that
+    // needs a model / background / style prompt renders this picker instead of a
+    // textarea: one saved entry per field, click again to clear. The text itself
+    // is never rendered here (not even as a hover tooltip); the chip label is the
+    // entry name, and the full text stays in the prompt library.
+    function PromptPicker(props) {
+      const { t, label, kind, value, prompts, onPick, onClear, onOpenLibrary, onAdopt } = props
+      const text = String(value || '').trim()
+      const list = (prompts || []).filter(item => (item.kind || 'style') === kind)
+      const matched = text ? list.filter(item => String(item.text || '').trim() === text) : []
+      // Only one chip can look selected even if two entries share the same text.
+      const activeId = matched.length ? matched[0].id : null
+      // A field can hold text that no library entry provides: a template saved by
+      // an older version, or an entry deleted elsewhere. Say so instead of
+      // quietly feeding an invisible prompt into the generator.
+      const orphan = Boolean(text) && matched.length === 0
+      return h(
+        'div',
+        { style: { marginBottom: 16 } },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 } },
+          h('div', { style: { fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-secondary)' } }, label),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            orphan && onAdopt
+              ? h('button', { type: 'button', onClick: () => onAdopt(text), style: tintButton() }, t('promptAdopt'))
+              : null,
+            text && onClear
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: onClear,
+                    style: textButton({ fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', fontWeight: 400 }),
+                  },
+                  t('promptClear'),
+                )
+              : null,
+            onOpenLibrary
+              ? h('button', { type: 'button', onClick: onOpenLibrary, style: tintButton() }, t('promptNewForKind'))
+              : null,
+          ),
+        ),
+        list.length
+          ? h(
+              'div',
+              { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+              list.map(item =>
+                h(
+                  'button',
+                  {
+                    key: item.id,
+                    type: 'button',
+                    onClick: () => onPick(item),
+                    style: item.id === activeId ? ACTIVE_CHIP : QUIET_CHIP,
+                  },
+                  item.name,
+                ),
+              ),
+            )
+          : (orphan
+              ? null
+              : h(
+                  'div',
+                  { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', lineHeight: 1.6 } },
+                  t('promptSelectEmpty'),
+                )),
+        orphan
+          ? h(
+              'div',
+              { style: { marginTop: 6, fontSize: 11, lineHeight: 1.55, color: 'var(--dsw-alias-state-warn-primary)' } },
+              t('promptOrphan'),
+            )
+          : null,
+      )
+    }
+
     function Thumb(props) {
       return h(
         'button',
@@ -1630,6 +1834,10 @@ window.__ModuleLoader__.load({
       const [templates, setTemplates] = useState(loadTemplates)
       const [reusablePrompts, setReusablePrompts] = useState(loadReusablePrompts)
       const [promptPage, setPromptPage] = useState(false)
+      // The inline "new / edit prompt" draft lives here, not inside the library
+      // component: leaving the library (back button, tab switch) must not throw
+      // away text the user already typed into the editor.
+      const [promptDraft, setPromptDraft] = useState(null)
       const [extracting, setExtracting] = useState(false)
 
       // Auto product-info extraction: user changes to the reference photos are
@@ -1839,6 +2047,7 @@ window.__ModuleLoader__.load({
         if (!template || !template.form) return
         const next = { ...template.form }
         if (next.pose && !customPoses.some(item => item.id === next.pose)) next.pose = ''
+        if (!SHOW.some(item => item.id === next.show)) next.show = DEFAULT_FORM.show
         if (!RATIOS.some(item => item.id === next.ratio)) next.ratio = DEFAULT_FORM.ratio
         if (!RESOLUTIONS.some(item => item.id === next.resolution)) next.resolution = DEFAULT_FORM.resolution
         // A template may carry the reference-first note from a previous photo set.
@@ -1886,15 +2095,110 @@ window.__ModuleLoader__.load({
         setNotice({ kind: 'ok', text: t('promptSaved') })
       }, [reusablePrompts, persistReusablePrompts, t])
 
+      // One field per library entry, so the applied copies are compared by exact
+      // text inside the entry's own kind. Edits/deletes in the library keep the
+      // studio (and the template snapshots) in sync.
+      const syncAppliedPrompt = useCallback((from, to, kind) => {
+        const patch = promptTextPatch(form, from, to, kind)
+        if (!Object.keys(patch).length) return false
+        setForm(prev => ({ ...prev, ...patch }))
+        // Only a real change may drop a hand-written final prompt.
+        setCustomPrompt(null)
+        return true
+      }, [form])
+
+      const dropAppliedPrompt = useCallback((text, kind) => syncAppliedPrompt(text, '', kind), [syncAppliedPrompt])
+
+      // Templates keep their own copy of the prompt text; an edit/delete in the
+      // library has to follow through or applying the template would restore a
+      // prompt that no longer exists in the library.
+      const syncTemplates = useCallback((from, to, kind) => {
+        let touched = false
+        const next = templates.map(template => {
+          const patch = promptTextPatch(template.form, from, to, kind)
+          if (!Object.keys(patch).length) return template
+          touched = true
+          return { ...template, form: { ...template.form, ...patch }, updatedAt: Date.now() }
+        })
+        if (!touched) return false
+        setTemplates(next)
+        saveJson(LS_TEMPLATES, next)
+        return true
+      }, [templates])
+
       const updateReusablePrompt = useCallback((id, patch) => {
-        const next = reusablePrompts.map(item => (item.id === id ? { ...item, ...patch } : item))
-        persistReusablePrompts(next)
+        const current = reusablePrompts.find(item => item.id === id)
+        persistReusablePrompts(reusablePrompts.map(item => (item.id === id ? { ...item, ...patch } : item)))
+        if (current) {
+          const kind = current.kind || 'style'
+          const kindChanged = typeof patch.kind === 'string' && patch.kind !== kind
+          const textChanged = typeof patch.text === 'string' && patch.text !== current.text
+          if (kindChanged) {
+            // The entry moved to another kind, so a field of the old kind cannot
+            // show it any more: clear the stale copy instead of leaving prompt
+            // text that no chip represents.
+            dropAppliedPrompt(current.text, kind)
+            syncTemplates(current.text, '', kind)
+          } else if (textChanged) {
+            syncAppliedPrompt(current.text, patch.text, kind)
+            syncTemplates(current.text, patch.text, kind)
+          }
+        }
         setNotice({ kind: 'ok', text: t('promptUpdated') })
-      }, [reusablePrompts, persistReusablePrompts, t])
+      }, [reusablePrompts, persistReusablePrompts, dropAppliedPrompt, syncAppliedPrompt, syncTemplates, t])
 
       const deleteReusablePrompt = useCallback(id => {
-        persistReusablePrompts(reusablePrompts.filter(item => item.id !== id))
-      }, [reusablePrompts, persistReusablePrompts])
+        const current = reusablePrompts.find(item => item.id === id)
+        if (!current) return
+        const kind = current.kind || 'style'
+        const remaining = reusablePrompts.filter(item => item.id !== id)
+        persistReusablePrompts(remaining)
+        // An entry with exactly the same text still provides it to the field.
+        const survivor = remaining.some(item => (item.kind || 'style') === kind && item.text === current.text)
+        if (!survivor) {
+          dropAppliedPrompt(current.text, kind)
+          syncTemplates(current.text, '', kind)
+        }
+        setNotice({ kind: 'ok', text: survivor ? t('promptDeleted') : t('promptDeletedCleared') })
+      }, [reusablePrompts, persistReusablePrompts, dropAppliedPrompt, syncTemplates, t])
+
+      const adoptPromptText = useCallback((kind, text) => {
+        const value = String(text || '').trim()
+        if (!value) return
+        const cleanKind = ['style', 'model', 'scene'].indexOf(kind) >= 0 ? kind : 'style'
+        if (reusablePrompts.some(item => (item.kind || 'style') === cleanKind && String(item.text || '').trim() === value)) return
+        persistReusablePrompts([...reusablePrompts, {
+          id: `pr-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+          kind: cleanKind,
+          name: value.slice(0, 16),
+          text: value,
+        }])
+        setNotice({ kind: 'ok', text: t('promptArchived') })
+      }, [reusablePrompts, persistReusablePrompts, t])
+
+      // Prompt fields used to accept typed text; whatever is still persisted in
+      // them (or restored from a template written by an older version) has no chip
+      // now, so import those leftovers into the library once.
+      const promptMigrationRef = useRef(false)
+      useEffect(() => {
+        if (promptMigrationRef.current) return
+        promptMigrationRef.current = true
+        const imported = legacyPromptEntries(form, reusablePrompts, t('promptLegacySuffix'))
+        if (!imported.length) return
+        persistReusablePrompts([...reusablePrompts, ...imported])
+        setNotice({ kind: 'ok', text: t('promptMigrated') })
+      }, [form, reusablePrompts, persistReusablePrompts, t])
+
+      const openPromptLibrary = useCallback(kind => {
+        const draft = String(kind || '') ? { id: null, kind, name: '', text: '' } : null
+        // Re-opening the library keeps an unsaved draft the user already typed.
+        setPromptDraft(prev => (draft && !(prev && String(prev.text || '').trim()) ? draft : prev))
+        setPromptPage(true)
+      }, [])
+
+      const closePromptLibrary = useCallback(() => {
+        setPromptPage(false)
+      }, [])
 
       const loadReferenceFile = useCallback(async file => {
         if (!file) return null
@@ -2379,6 +2683,8 @@ window.__ModuleLoader__.load({
               setPosePage(false)
               setTemplatePage(false)
               setPromptPage(false)
+              // The prompt draft is intentionally kept: switching tabs must not
+              // discard text typed into the inline editor.
               setTab(id)
             },
             style: {
@@ -2456,16 +2762,21 @@ window.__ModuleLoader__.load({
           body = h(TemplateLibrary, {
             lang, t,
             templates,
+            prompts: reusablePrompts,
             onBack: () => setTemplatePage(false),
             onApply: applyTemplate,
             onUpdate: updateTemplate,
             onDelete: deleteTemplate,
+            onOpenPromptLibrary: openPromptLibrary,
+            onAdoptPrompt: adoptPromptText,
           })
         } else if (promptPage) {
           body = h(PromptLibrary, {
             lang, t,
             prompts: reusablePrompts,
-            onBack: () => setPromptPage(false),
+            draft: promptDraft,
+            setDraft: setPromptDraft,
+            onBack: closePromptLibrary,
             onSave: saveReusablePrompt,
             onUpdate: updateReusablePrompt,
             onDelete: deleteReusablePrompt,
@@ -2495,8 +2806,8 @@ window.__ModuleLoader__.load({
             onApplyTemplate: applyTemplate,
             onOpenTemplateLibrary: () => setTemplatePage(true),
             prompts: reusablePrompts,
-            onSavePrompt: saveReusablePrompt,
-            onOpenPromptLibrary: () => setPromptPage(true),
+            onOpenPromptLibrary: openPromptLibrary,
+            onAdoptPrompt: adoptPromptText,
             referenceCount,
             activeName: settings && settings.name ? settings.name : '',
             activeModel: settings && settings.model ? settings.model : '',
@@ -3469,13 +3780,13 @@ window.__ModuleLoader__.load({
         customPoses, onOpenPoseLibrary,
         extracting, onExtractDescription,
         templates, onSaveTemplate, onApplyTemplate, onOpenTemplateLibrary,
-        prompts, onSavePrompt, onOpenPromptLibrary,
+        prompts, onOpenPromptLibrary,
+        onAdoptPrompt,
         activeName, activeModel, visionLabel,
       } = props
 
       const [templateNaming, setTemplateNaming] = useState(false)
       const [templateName, setTemplateName] = useState('')
-      const [promptNaming, setPromptNaming] = useState(null)
 
       const jobList = jobs || []
       const runningJobCount = jobList.filter(job => job.status === 'running').length
@@ -3492,18 +3803,24 @@ window.__ModuleLoader__.load({
         return t('queueError')
       }
 
-      const promptsFor = kind => (prompts || []).filter(item => (item.kind || 'style') === kind)
-
-      const applyPromptToField = (kind, item) => {
-        if (kind === 'style') {
-          const current = (form.extraPrompt || '').trim()
-          update({ extraPrompt: current ? `${current}，${item.text}` : item.text })
-        } else if (kind === 'model') {
-          update({ modelPrompt: item.text })
-        } else {
-          update({ backgroundPrompt: item.text })
-        }
-      }
+      // Prompt text is authored only in the prompt library: these fields just pick
+      // a saved entry, and clicking the picked chip again clears the field.
+      const promptPicker = (kind, valueKey, labelKey) =>
+        h(PromptPicker, {
+          key: kind,
+          t,
+          label: t(labelKey),
+          kind,
+          value: form[valueKey],
+          prompts,
+          onPick: item => {
+            const current = String(form[valueKey] || '').trim()
+            update({ [valueKey]: current === String(item.text || '').trim() ? '' : item.text })
+          },
+          onClear: () => update({ [valueKey]: '' }),
+          onOpenLibrary: () => onOpenPromptLibrary(kind),
+          onAdopt: onAdoptPrompt ? text => onAdoptPrompt(kind, text) : null,
+        })
 
       const chip = (key, labelKey, options, hintText) =>
         h(ChipGroup, {
@@ -3522,106 +3839,7 @@ window.__ModuleLoader__.load({
         t('fPoseCustom'),
       )
 
-      const quietChip = {
-        padding: '5px 11px',
-        borderRadius: 999,
-        border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-layer-2)',
-        color: 'var(--dsw-alias-label-primary)',
-        fontSize: 12,
-        fontWeight: 500,
-        cursor: 'pointer',
-      }
-
-      const promptTagRow = kind => {
-        const list = promptsFor(kind)
-        return list.length
-          ? h(
-              'div',
-              { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 } },
-              list.map(item =>
-                h(
-                  'button',
-                  { key: item.id, type: 'button', title: item.text, style: quietChip, onClick: () => applyPromptToField(kind, item) },
-                  item.name,
-                ),
-              ),
-            )
-          : null
-      }
-
-      const promptField = options => {
-        const { label, kind, valueKey, placeholder, rows, hint } = options
-        const naming = promptNaming && promptNaming.kind === kind
-        const value = form[valueKey] || ''
-        return h(
-          'div',
-          { style: { marginBottom: 16 } },
-          h(
-            'div',
-            { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 } },
-            h('div', { style: { fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-secondary)' } }, label),
-            naming
-              ? null
-              : h(
-                  'button',
-                  {
-                    type: 'button',
-                    onClick: () => setPromptNaming({ kind, name: '' }),
-                    style: tintButton(),
-                  },
-                  t('saveReusable'),
-                ),
-          ),
-          h('textarea', {
-            value,
-            placeholder,
-            onChange: event => update({ [valueKey]: event.target.value }),
-            rows: rows || 2,
-            style: { ...INPUT_STYLE, resize: 'vertical' },
-          }),
-          hint
-            ? h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', marginTop: 6, lineHeight: 1.55 } }, hint)
-            : null,
-          naming
-            ? h(
-                'div',
-                { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 } },
-                h('input', {
-                  value: promptNaming.name,
-                  placeholder: t('promptNamePh'),
-                  onChange: event => setPromptNaming(prev => ({ ...prev, name: event.target.value })),
-                  style: { ...INPUT_STYLE, width: 190, padding: '6px 9px', fontSize: 12 },
-                }),
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    disabled: !String(value).trim(),
-                    onClick: () => {
-                      onSavePrompt(kind, promptNaming.name, value)
-                      setPromptNaming(null)
-                    },
-                    style: {
-                      ...PRIMARY_BUTTON,
-                      padding: '6px 12px',
-                      fontSize: 12,
-                      borderRadius: 10,
-                      opacity: String(value).trim() ? 1 : 0.55,
-                    },
-                  },
-                  t('saveName'),
-                ),
-                h(
-                  'button',
-                  { type: 'button', onClick: () => setPromptNaming(null), style: softButton() },
-                  t('cancel'),
-                ),
-              )
-            : null,
-          promptTagRow(kind),
-        )
-      }
+      const quietChip = QUIET_CHIP
 
       const templateList = templates || []
       const templateRow = h(
@@ -3902,7 +4120,7 @@ window.__ModuleLoader__.load({
         null,
         h(SectionHead, {
           title: t('studioPromptGroupTitle'),
-          extra: h('button', { type: 'button', onClick: onOpenPromptLibrary, style: softButton() }, t('promptManage')),
+          extra: h('button', { type: 'button', onClick: () => onOpenPromptLibrary(), style: softButton() }, t('promptManage')),
         }),
         h(
           Field,
@@ -3950,30 +4168,15 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 16px' } },
-            promptField({
-              label: t('fModelPrompt'),
-              kind: 'model',
-              valueKey: 'modelPrompt',
-              placeholder: t('fModelPromptPh'),
-              rows: 2,
-              hint: t('modelPromptHint'),
-            }),
-            promptField({
-              label: t('fBackgroundPrompt'),
-              kind: 'scene',
-              valueKey: 'backgroundPrompt',
-              placeholder: t('fBackgroundPromptPh'),
-              rows: 2,
-              hint: t('backgroundPromptHint'),
-            }),
+            promptPicker('model', 'modelPrompt', 'fModelPrompt'),
+            promptPicker('scene', 'backgroundPrompt', 'fBackgroundPrompt'),
           ),
-          promptField({
-            label: t('fExtraPrompt'),
-            kind: 'style',
-            valueKey: 'extraPrompt',
-            placeholder: t('fExtraPromptPh'),
-            rows: 3,
-          }),
+          promptPicker('style', 'extraPrompt', 'fExtraPrompt'),
+          h(
+            'div',
+            { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', marginTop: -6, lineHeight: 1.55 } },
+            t('promptOnlyHint'),
+          ),
         ),
         h(Hairline),
         h(
@@ -4240,9 +4443,13 @@ window.__ModuleLoader__.load({
     // One management page for every reusable prompt: style/framing, model and
     // background. The studio fields add entries; this page edits/deletes them.
     function PromptLibrary(props) {
-      const { lang, t, prompts, onBack, onSave, onUpdate, onDelete } = props
-      const [editor, setEditor] = useState(null)
+      const { lang, t, prompts, draft, setDraft, onBack, onSave, onUpdate, onDelete } = props
+      // Editing a row opens the fields inside that row; "new prompt" opens the
+      // same fields in a card above the list. The draft itself lives in the app so
+      // leaving this page cannot silently discard typed text.
+      const editor = draft || null
       const [confirmId, setConfirmId] = useState(null)
+      const [warning, setWarning] = useState('')
 
       const kinds = [
         { id: 'style', labelKey: 'promptKindStyle' },
@@ -4253,25 +4460,54 @@ window.__ModuleLoader__.load({
         const entry = kinds.find(item => item.id === kind)
         return t(entry ? entry.labelKey : 'promptKindStyle')
       }
-      const kindOptions = kinds.map(item => ({ id: item.id, zh: t(item.labelKey), en: t(item.labelKey) }))
+      // The segmented control needs both languages, so read the dictionaries
+      // directly instead of putting one resolved string into both slots.
+      const kindOptions = kinds.map(item => ({ id: item.id, zh: STR.zh[item.labelKey], en: STR.en[item.labelKey] }))
       const promptList = Array.isArray(prompts) ? prompts : []
 
-      const startNew = () => setEditor({ id: null, kind: 'style', name: '', text: '' })
-      const startEdit = prompt => setEditor({
-        id: prompt.id,
-        kind: prompt.kind || 'style',
-        name: prompt.name || '',
-        text: prompt.text || '',
-      })
-      const changeEditor = patch => setEditor(prev => ({ ...prev, ...patch }))
+      // Switching to another row while an unsaved draft has text would throw that
+      // text away, so the switch is refused until the draft is saved or cancelled.
+      const switchDraft = next => {
+        if (editor && String(editor.text || '').trim() && editor.id !== next.id) {
+          setWarning(t('promptDraftBusy'))
+          return
+        }
+        setWarning('')
+        setDraft(next)
+      }
+      const startNew = () => {
+        setConfirmId(null)
+        switchDraft({ id: null, kind: 'style', name: '', text: '' })
+      }
+      const startEdit = prompt => {
+        setConfirmId(null)
+        switchDraft({
+          id: prompt.id,
+          kind: prompt.kind || 'style',
+          name: prompt.name || '',
+          text: prompt.text || '',
+        })
+      }
+      const changeEditor = patch => setDraft(prev => ({ ...(prev || {}), ...patch }))
       const saveEditor = () => {
         if (!editor) return
         const text = String(editor.text || '').trim()
         if (!text) return
+        const kind = ['style', 'model', 'scene'].indexOf(editor.kind) >= 0 ? editor.kind : 'style'
+        // Two entries with the same text in one kind cannot be told apart by the
+        // studio fields they feed, so the duplicate is refused here.
+        const duplicate = promptList.some(item => (
+          item.id !== editor.id && (item.kind || 'style') === kind && String(item.text || '').trim() === text
+        ))
+        if (duplicate) {
+          setWarning(t('promptDupBlocked'))
+          return
+        }
         const name = String(editor.name || '').trim() || text.slice(0, 16)
-        if (editor.id) onUpdate(editor.id, { kind: editor.kind, name, text })
-        else onSave(editor.kind, name, text)
-        setEditor(null)
+        setWarning('')
+        if (editor.id) onUpdate(editor.id, { kind, name, text })
+        else onSave(kind, name, text)
+        setDraft(null)
       }
       const remove = prompt => {
         if (confirmId !== prompt.id) {
@@ -4283,59 +4519,79 @@ window.__ModuleLoader__.load({
         }
         setConfirmId(null)
         onDelete(prompt.id)
-        if (editor && editor.id === prompt.id) setEditor(null)
+        if (editor && editor.id === prompt.id) setDraft(null)
       }
 
-      const editorCard = editor
+      const editorFields = () => [
+        h(
+          Field,
+          { key: 'name', label: t('promptNameLabel') },
+          h('input', {
+            value: editor.name,
+            placeholder: t('promptNamePh'),
+            onChange: event => changeEditor({ name: event.target.value }),
+            style: INPUT_STYLE,
+          }),
+        ),
+        h(
+          Field,
+          { key: 'kind', label: t('promptKindLabel') },
+          h(Segmented, { options: kindOptions, value: editor.kind, lang, onChange: value => changeEditor({ kind: value }) }),
+        ),
+        h(
+          Field,
+          { key: 'text', label: t('promptTextLabel') },
+          h('textarea', {
+            value: editor.text,
+            placeholder: editor.kind === 'model'
+              ? t('fModelPromptPh')
+              : (editor.kind === 'scene' ? t('fBackgroundPromptPh') : t('fExtraPromptPh')),
+            onChange: event => changeEditor({ text: event.target.value }),
+            rows: 5,
+            style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
+          }),
+        ),
+        h(
+          'div',
+          { key: 'actions', style: { display: 'flex', gap: 8 } },
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: saveEditor,
+              disabled: !String(editor.text || '').trim(),
+              style: {
+                ...PRIMARY_BUTTON,
+                padding: '7px 16px',
+                fontSize: 12.5,
+                opacity: String(editor.text || '').trim() ? 1 : 0.55,
+              },
+            },
+            t('saveName'),
+          ),
+          h('button', { type: 'button', onClick: () => setDraft(null), style: softButton() }, t('cancel')),
+        ),
+      ]
+
+      const newCard = editor && !editor.id
         ? h(
             Card,
-            { style: { marginBottom: 16 } },
-            h(
-              'div',
-              { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 } },
-              h('div', { style: { fontSize: 13, fontWeight: 650 } }, editor.id ? t('promptEditTitle') : t('promptNewTitle')),
-              h('button', { type: 'button', onClick: () => setEditor(null), style: softButton() }, t('cancel')),
-            ),
-            h(
-              Field,
-              { label: t('promptNameLabel') },
-              h('input', {
-                value: editor.name,
-                placeholder: t('promptNamePh'),
-                onChange: event => changeEditor({ name: event.target.value }),
-                style: INPUT_STYLE,
-              }),
-            ),
-            h(
-              Field,
-              { label: t('promptKindLabel') },
-              h(Segmented, { options: kindOptions, value: editor.kind, lang, onChange: value => changeEditor({ kind: value }) }),
-            ),
-            h(
-              Field,
-              { label: t('promptTextLabel') },
-              h('textarea', {
-                value: editor.text,
-                onChange: event => changeEditor({ text: event.target.value }),
-                rows: 5,
-                style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
-              }),
-            ),
-            h(
-              'button',
-              {
-                type: 'button',
-                onClick: saveEditor,
-                disabled: !String(editor.text || '').trim(),
-                style: { ...PRIMARY_BUTTON, padding: '7px 16px', fontSize: 12.5, opacity: String(editor.text || '').trim() ? 1 : 0.55 },
-              },
-              t('saveName'),
-            ),
+            { key: 'new', style: { marginBottom: 16 } },
+            h('div', { style: { fontSize: 13, fontWeight: 650, marginBottom: 12 } }, t('promptNewTitle')),
+            editorFields(),
           )
         : null
 
-      const row = prompt =>
-        h(
+      const row = prompt => {
+        if (editor && editor.id === prompt.id) {
+          return h(
+            Card,
+            { key: prompt.id, style: { padding: '14px 16px' } },
+            h('div', { style: { fontSize: 13, fontWeight: 650, marginBottom: 12 } }, t('promptEditTitle')),
+            editorFields(),
+          )
+        }
+        return h(
           Card,
           { key: prompt.id, style: { padding: '12px 14px' } },
           h(
@@ -4381,6 +4637,7 @@ window.__ModuleLoader__.load({
             ),
           ),
         )
+      }
 
       const groups = kinds.map(kind => {
         const entries = promptList.filter(prompt => (prompt.kind || 'style') === kind.id)
@@ -4402,10 +4659,17 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: onBack, style: ghostButton({ padding: '6px 12px', fontSize: 12.5 }) }, t('poseBack')),
           h('div', { style: { fontSize: 16, fontWeight: 680 } }, t('promptLibraryTitle')),
           h('div', { style: { flex: 1 } }),
-          h('button', { type: 'button', onClick: startNew, style: tintButton() }, t('newPrompt')),
+          h('button', { type: 'button', onClick: startNew, style: tintButton() }, t('promptNewForKind')),
         ),
         h('div', { style: { fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 14px', lineHeight: 1.65 } }, t('promptLibraryHint')),
-        editorCard,
+        warning
+          ? h(
+              'div',
+              { style: { fontSize: 12, color: 'var(--dsw-alias-state-warn-primary)', margin: '0 0 12px', lineHeight: 1.6 } },
+              warning,
+            )
+          : null,
+        newCard,
         promptList.length === 0
           ? h(Card, { style: { fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', padding: '14px 16px' } }, t('promptLibraryEmpty'))
           : groups,
@@ -4414,9 +4678,10 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------ template library
     // Editable library for the user's own quick templates. Creating happens in
-    // the studio ("+ 保存为模板"); this page renames/edits/deletes them.
+    // the studio ("+ 保存为模板"); this page renames/edits/deletes them. Prompt
+    // fields are picked from the prompt library, never typed here.
     function TemplateLibrary(props) {
-      const { lang, t, templates, onBack, onApply, onUpdate, onDelete } = props
+      const { lang, t, templates, prompts, onBack, onApply, onUpdate, onDelete, onOpenPromptLibrary, onAdoptPrompt } = props
       const [editor, setEditor] = useState(null)
       const [confirmId, setConfirmId] = useState(null)
 
@@ -4526,35 +4791,46 @@ window.__ModuleLoader__.load({
                 style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
               }),
             ),
+            h(PromptPicker, {
+              key: 'model',
+              t,
+              label: t('fModelPrompt'),
+              kind: 'model',
+              value: editor.modelPrompt,
+              prompts,
+              onPick: item => changeEditor({ modelPrompt: item.text }),
+              onClear: () => changeEditor({ modelPrompt: '' }),
+              onOpenLibrary: onOpenPromptLibrary ? () => onOpenPromptLibrary('model') : null,
+              onAdopt: onAdoptPrompt ? text => onAdoptPrompt('model', text) : null,
+            }),
+            h(PromptPicker, {
+              key: 'scene',
+              t,
+              label: t('fBackgroundPrompt'),
+              kind: 'scene',
+              value: editor.backgroundPrompt,
+              prompts,
+              onPick: item => changeEditor({ backgroundPrompt: item.text }),
+              onClear: () => changeEditor({ backgroundPrompt: '' }),
+              onOpenLibrary: onOpenPromptLibrary ? () => onOpenPromptLibrary('scene') : null,
+              onAdopt: onAdoptPrompt ? text => onAdoptPrompt('scene', text) : null,
+            }),
+            h(PromptPicker, {
+              key: 'style',
+              t,
+              label: t('fExtraPrompt'),
+              kind: 'style',
+              value: editor.extraPrompt,
+              prompts,
+              onPick: item => changeEditor({ extraPrompt: item.text }),
+              onClear: () => changeEditor({ extraPrompt: '' }),
+              onOpenLibrary: onOpenPromptLibrary ? () => onOpenPromptLibrary('style') : null,
+              onAdopt: onAdoptPrompt ? text => onAdoptPrompt('style', text) : null,
+            }),
             h(
-              Field,
-              { label: t('fModelPrompt') },
-              h('textarea', {
-                value: editor.modelPrompt,
-                onChange: event => changeEditor({ modelPrompt: event.target.value }),
-                rows: 2,
-                style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
-              }),
-            ),
-            h(
-              Field,
-              { label: t('fBackgroundPrompt') },
-              h('textarea', {
-                value: editor.backgroundPrompt,
-                onChange: event => changeEditor({ backgroundPrompt: event.target.value }),
-                rows: 2,
-                style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
-              }),
-            ),
-            h(
-              Field,
-              { label: t('templatePrompt') },
-              h('textarea', {
-                value: editor.extraPrompt,
-                onChange: event => changeEditor({ extraPrompt: event.target.value }),
-                rows: 3,
-                style: { ...INPUT_STYLE, resize: 'vertical', lineHeight: 1.55 },
-              }),
+              'div',
+              { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', margin: '-6px 0 14px', lineHeight: 1.55 } },
+              t('promptOnlyHint'),
             ),
             h(
               'button',
