@@ -21,8 +21,12 @@
  *   GET/POST/DELETE /ref/products                    -> persisted product ref set
  *   GET  /ref-image         -> serve a persisted reference image
  *   POST /reveal            -> open the output folder
+ *
+ * Every failure is answered as `{ ok: false, code, error }`: `code` is a stable
+ * lowercase kebab-case identifier for the client, `error` is the human-readable
+ * (Chinese) message.
  */
-import { promises as fs } from 'node:fs'
+import { promises as fs, constants as fsConstants } from 'node:fs'
 import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
@@ -37,6 +41,43 @@ const DEFAULT_MODEL = 'gpt-image-1'
 const DEFAULT_SIZE = '2048x2048'
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp'])
+
+// ---------------------------------------------------------- request size limits
+// The old reader had one 96MB cap for every route, so even /settings or /models
+// could be made to buffer 96MB (and then ~4x that while decoding) before failing.
+// Each route now declares the body it can legitimately receive:
+//   JSON_BODY_LIMIT            2MB  – settings / test / models / reveal (tiny JSON)
+//   referenceJsonBodyLimit(n)  n reference images, base64-expanded (+1MB slack)
+// On top of the body limit, reference images are bounded per image (12MB) and per
+// request (64MB), so hitting a route directly cannot bypass what the page checks.
+const JSON_BODY_LIMIT = 2 * 1024 * 1024
+const REFERENCE_MAX_BYTES = 12 * 1024 * 1024
+const REFERENCE_MAX_TOTAL_BYTES = 64 * 1024 * 1024
+const BASE64_EXPANSION = 4 / 3
+const GENERATE_REF_LIMIT = 8
+const EXTRACT_REF_LIMIT = 4
+const EXTRACT_SIZE_REF_LIMIT = 2
+// A prompt is counted in code points, so an emoji or any other surrogate pair
+// counts once instead of twice. Well past any prompt the page builds (~4k).
+const PROMPT_MAX_CHARS = 20000
+// Upstream SSE guards: one un-terminated event block, and the whole response.
+// The block cap must stay above the largest *legitimate* single event: a gateway
+// that returns the finished image in one `completed` event sends the whole
+// base64 in that block (a 2048px PNG is ~5-11MB of base64), so 8MB would reject
+// real generations. 32MB keeps >3x headroom while still bounding a runaway block;
+// the total cap bounds the whole response (16+ images worth).
+const SSE_BLOCK_MAX_CHARS = 32 * 1024 * 1024
+const SSE_TOTAL_MAX_CHARS = 64 * 1024 * 1024
+
+/** Body limit for a route that accepts up to `count` base64 reference images. */
+function referenceJsonBodyLimit(count) {
+  const raw = Math.min(REFERENCE_MAX_TOTAL_BYTES, count * REFERENCE_MAX_BYTES)
+  return Math.ceil(raw * BASE64_EXPANSION) + 1024 * 1024
+}
+
+function formatMegabytes(bytes) {
+  return `${Math.round((Number(bytes) / (1024 * 1024)) * 10) / 10}MB`
+}
 
 function profileRoot() {
   const fromEnv = process.env.DSH_PROFILE_DIR
@@ -307,7 +348,7 @@ function mutateSettings(buildNext) {
   const task = settingsMutationQueue.then(async () => {
     const current = await readSettings()
     if (!settingsHealthy) {
-      throw new Error(settingsWarning || 'settings.json 无法读取，保存已暂停')
+      throw wbError('settings-corrupt', settingsWarning || 'settings.json 无法读取，保存已暂停', 409)
     }
     const next = await buildNext(current)
     await writeSettings(next)
@@ -322,26 +363,81 @@ function sendJson(res, status, value) {
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
   res.setHeader('cache-control', 'no-store')
+  res.setHeader('x-content-type-options', 'nosniff')
   res.end(body)
 }
 
-function sendError(res, status, message) {
-  sendJson(res, status, { ok: false, error: String(message || 'unknown error') })
+/** An error that carries a stable machine code (and optional HTTP status), so the
+ *  route layer answers `{ok:false, code, error}` instead of an opaque 500. */
+function wbError(code, message, status) {
+  const error = new Error(String(message))
+  error.wbCode = String(code)
+  if (status) error.wbStatus = Number(status)
+  return error
+}
+
+/** Upstream failures are recognised by their status/message, so the client can
+ *  tell "no key" from "bad key", "no balance", "rate limited" and "timed out"
+ *  instead of always seeing internal-error. */
+const PROVIDER_ERROR_RULES = [
+  { code: 'missing-api-key', status: 400, pattern: /尚未配置 *API *Key/i },
+  { code: 'prompt-too-long', status: 400, pattern: /提示词过长/ },
+  { code: 'provider-balance', status: 502, pattern: /insufficient balance|余额不足|欠费|额度不足|quota/i },
+  { code: 'provider-auth', status: 502, pattern: /unauthorized|invalid api key|invalid_api_key|无效的令牌|无效令牌|HTTP 40[13]|接口返回 40[13]/i },
+  { code: 'provider-rate-limit', status: 429, pattern: /rate limit|too many requests|请求过于频繁|429/i },
+  { code: 'provider-timeout', status: 504, pattern: /timeout|超时|aborted|ETIMEDOUT|EAI_AGAIN|ECONNRESET/i },
+  { code: 'provider-error', status: 502, pattern: /接口|请求 .* 失败|下载生成图片失败|流式|响应体过大|fetch failed|HTTP \d{3}/ },
+]
+
+/** Wire pair ({status, code}) for one thrown error: an explicit code wins,
+ *  otherwise the upstream status, otherwise the message, otherwise internal-error. */
+function classifyError(error) {
+  if (error && error.wbCode) {
+    return { status: Number(error.wbStatus) || 500, code: String(error.wbCode) }
+  }
+  const message = String(error && error.message ? error.message : error)
+  const upstream = Number(error && error.status) || 0
+  if (upstream === 401 || upstream === 403) return { status: 502, code: 'provider-auth' }
+  if (upstream === 402) return { status: 502, code: 'provider-balance' }
+  if (upstream === 429) return { status: 429, code: 'provider-rate-limit' }
+  for (const rule of PROVIDER_ERROR_RULES) {
+    if (rule.pattern.test(message)) return { status: rule.status, code: rule.code }
+  }
+  if (upstream >= 400) return { status: 502, code: 'provider-error' }
+  return { status: 500, code: 'internal-error' }
+}
+
+/** `sendError(res, status, code, message)`; the old 3-argument form
+ *  `sendError(res, status, message)` still works (code defaults to internal-error).
+ *  `error` always keeps a readable message because the page shows it verbatim. */
+function sendError(res, status, code, message) {
+  const hasMessage = message !== undefined
+  const errorCode = String((hasMessage ? code : '') || 'internal-error')
+  const errorMessage = String((hasMessage ? message : code) || 'unknown error')
+  sendJson(res, status, { ok: false, code: errorCode, error: errorMessage })
 }
 
 function methodAllowed(req, res, methods) {
   const method = String(req.method || 'GET').toUpperCase()
   if (methods.indexOf(method) >= 0) return true
-  sendError(res, 405, '请求方法不被允许')
+  sendError(res, 405, 'method-not-allowed', '请求方法不被允许')
   return false
 }
 
-async function readJsonBody(req) {
+/** Reads a JSON body with a per-route limit (default JSON_BODY_LIMIT). A route
+ *  that carries reference images passes `referenceJsonBodyLimit(n)` instead, so a
+ *  small endpoint can never be made to buffer a huge payload. */
+async function readJsonBody(req, options) {
+  const requested = Number(options && options.limit)
+  const limit = requested > 0 ? requested : JSON_BODY_LIMIT
+  const tooLarge = () => wbError('body-too-large', `请求体过大（上限 ${formatMegabytes(limit)}）`, 413)
+  const declared = Number(req.headers['content-length'])
+  if (Number.isFinite(declared) && declared > limit) throw tooLarge()
   const chunks = []
   let size = 0
   for await (const chunk of req) {
     size += chunk.length
-    if (size > 96 * 1024 * 1024) throw new Error('请求体过大（上限 96MB）')
+    if (size > limit) throw tooLarge()
     chunks.push(chunk)
   }
   const raw = Buffer.concat(chunks).toString('utf8').trim()
@@ -350,7 +446,7 @@ async function readJsonBody(req) {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('请求体不是合法 JSON')
+    throw wbError('invalid-json', '请求体不是合法 JSON', 400)
   }
   return parsed && typeof parsed === 'object' ? parsed : {}
 }
@@ -467,7 +563,11 @@ async function ensureOutputDirWritable(outputDir) {
   try {
     await fs.writeFile(probe, 'ok')
   } catch (error) {
-    throw new Error(`输出目录不可写：${outputDir}（${error && error.message ? error.message : error}）`)
+    throw wbError(
+      'output-dir-unwritable',
+      `输出目录不可写：${outputDir}（${error && error.message ? error.message : error}）`,
+      500,
+    )
   } finally {
     await fs.rm(probe, { force: true }).catch(() => {})
   }
@@ -672,9 +772,22 @@ async function consumeImageStream(response, endpoint) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let received = 0
   let completed = null
   let fallback = null
   let lastPartial = null
+
+  /** A gateway that keeps streaming (or never terminates an event block) must not
+   *  be able to grow this function's buffers without a bound: stop reading and
+   *  report it as an upstream failure. */
+  const oversize = async message => {
+    try {
+      await reader.cancel()
+    } catch {
+      // stream already closed
+    }
+    return wbError('provider-error', `${message}，已中止接收：${endpoint}`, 502)
+  }
 
   const handleBlock = block => {
     const dataLines = []
@@ -713,7 +826,14 @@ async function consumeImageStream(response, endpoint) {
     for (;;) {
       const { value, done } = await reader.read()
       if (done) break
+      received += value && typeof value.length === 'number' ? value.length : 0
+      if (received > SSE_TOTAL_MAX_CHARS) {
+        throw await oversize(`接口流式响应体过大（超过 ${formatMegabytes(SSE_TOTAL_MAX_CHARS)}）`)
+      }
       buffer += decoder.decode(value, { stream: true })
+      if (buffer.length > SSE_BLOCK_MAX_CHARS) {
+        throw await oversize(`接口流式响应的单个事件过大（超过 ${formatMegabytes(SSE_BLOCK_MAX_CHARS)}）`)
+      }
       for (;;) {
         const match = /\r?\n\r?\n/.exec(buffer)
         if (!match) break
@@ -787,6 +907,9 @@ async function performImageRequest(endpoint, build, timeoutMs, streaming) {
     try {
       return await consumeImageStream(result.response, endpoint)
     } catch (error) {
+      // A failure detected locally (oversized stream) keeps its own code and
+      // message instead of being re-wrapped with the endpoint prefix.
+      if (error && error.wbCode) throw error
       // A stream whose event shape we cannot decode (some relays stream chat-style
       // chunks) is retried once as a plain request instead of failing the job.
       if (streaming && /流式响应没有返回图片/.test(String(error && error.message))) {
@@ -908,13 +1031,20 @@ function normalizeReference(raw) {
   if (!raw || typeof raw !== 'object') return undefined
   const base64 = String(raw.dataBase64 || '').trim()
   if (!base64) return undefined
+  // Reject an oversized payload *before* decoding it: decoding first and checking
+  // the bytes afterwards held two full copies of the image in memory at once.
+  if (base64.length > Math.ceil(REFERENCE_MAX_BYTES * BASE64_EXPANSION) + 8) {
+    throw wbError('reference-too-large', `参考图过大（上限 ${formatMegabytes(REFERENCE_MAX_BYTES)}）`, 413)
+  }
   const buffer = Buffer.from(base64, 'base64')
   if (buffer.length === 0) return undefined
-  if (buffer.length > 12 * 1024 * 1024) throw new Error('参考图过大（上限 12MB）')
+  if (buffer.length > REFERENCE_MAX_BYTES) {
+    throw wbError('reference-too-large', `参考图过大（上限 ${formatMegabytes(REFERENCE_MAX_BYTES)}）`, 413)
+  }
   // Trust the bytes, not the declared media type: a garbage payload must not be
   // persisted/served as a PNG.
   const mediaType = detectImageMediaType(buffer)
-  if (!mediaType) throw new Error('参考图不是有效图片（支持 PNG / JPG / WebP）')
+  if (!mediaType) throw wbError('invalid-reference', '参考图不是有效图片（支持 PNG / JPG / WebP）', 400)
   const extension = mediaType === 'image/jpeg' ? '.jpg' : mediaType === 'image/webp' ? '.webp' : '.png'
   const base = String(raw.name || '')
     .replace(/\.[^.]+$/, '')
@@ -923,6 +1053,41 @@ function normalizeReference(raw) {
     .slice(0, 40)
   const name = `${base || 'reference'}${extension}`
   return { buffer, mediaType, name, originalName: String(raw.name || '').slice(0, 80) }
+}
+
+/**
+ * The single place that decides how many reference images a route accepts and how
+ * large the whole set may be. The page has its own limits, but a request sent
+ * straight to the route must obey exactly the same ones instead of being silently
+ * truncated (`/ref/products`, `/extract`) or failing with a bare 500
+ * (`/generate`). Entries that are not images at all are skipped as before.
+ */
+function fillReferences(rawList, limit) {
+  const list = Array.isArray(rawList) ? rawList : []
+  const references = []
+  let total = 0
+  for (const raw of list) {
+    // Skip entries that carry no image data at all (cheap, no decoding).
+    if (!raw || typeof raw !== 'object' || !String(raw.dataBase64 || '').trim()) continue
+    // Count *before* decoding: the (limit + 1)-th image used to be decoded first
+    // and then reported as "too large" when it happened to exceed the per-image
+    // cap, which hid the real reason. Priority: count > per-image > total.
+    if (references.length >= limit) {
+      throw wbError('reference-count', `参考图最多 ${limit} 张`, 400)
+    }
+    const reference = normalizeReference(raw)
+    if (!reference) continue
+    total += reference.buffer.length
+    if (total > REFERENCE_MAX_TOTAL_BYTES) {
+      throw wbError(
+        'reference-total-size',
+        `参考图总大小超出上限（${formatMegabytes(REFERENCE_MAX_TOTAL_BYTES)}），请减少张数或压缩后重试`,
+        413,
+      )
+    }
+    references.push(reference)
+  }
+  return references
 }
 
 // -------------------------------------------- product key-element extraction
@@ -1503,7 +1668,11 @@ async function fetchModelIds(settings, override) {
 async function generateImages(settings, body) {
   const startedAt = Date.now()
   const prompt = String(body.prompt || '').trim()
-  if (!prompt) throw new Error('提示词不能为空')
+  if (!prompt) throw wbError('missing-prompt', '提示词不能为空', 400)
+  const promptLength = Array.from(prompt).length
+  if (promptLength > PROMPT_MAX_CHARS) {
+    throw wbError('prompt-too-long', `提示词过长（上限 ${PROMPT_MAX_CHARS} 字符，当前 ${promptLength}）`, 400)
+  }
   const outputDir = path.resolve(String(settings.outputDir || defaultOutputDir()))
   // A queued job remembers which API profile it was submitted with; fall back to
   // the current profile when that id no longer exists.
@@ -1518,14 +1687,10 @@ async function generateImages(settings, body) {
   await fs.mkdir(outputDir, { recursive: true })
   await ensureOutputDirWritable(outputDir)
 
-  const references = []
-  const collect = value => {
-    const normalized = normalizeReference(value)
-    if (normalized) references.push(normalized)
-  }
-  if (Array.isArray(body.references)) for (const item of body.references) collect(item)
-  if (body.reference) collect(body.reference)
-  if (references.length > 8) throw new Error('参考图最多 8 张')
+  const references = fillReferences([
+    ...(Array.isArray(body.references) ? body.references : []),
+    ...(body.reference ? [body.reference] : []),
+  ], GENERATE_REF_LIMIT)
 
   const referenceHashes = new Set(references.map(reference => hashBuffer(reference.buffer)))
   // A transient upstream failure (5xx / 429 / timeout / network) is retried once
@@ -1559,7 +1724,7 @@ async function generateImages(settings, body) {
     // Persist nothing until the response is known to be a real generation: b64
     // payloads decode locally while URL payloads download in parallel.
     payloads = (await Promise.all(data.map(entry => resolveImagePayload(entry, profile)))).filter(Boolean)
-    if (payloads.length === 0) throw new Error('接口返回成功，但没有可用的图片数据')
+    if (payloads.length === 0) throw wbError('no-image-returned', '接口返回成功，但没有可用的图片数据', 502)
     const echoes = payloads.filter(payload => referenceHashes.has(hashBuffer(payload.buffer)))
     if (echoes.length === 0) break
     if (attempts === 1) {
@@ -1580,7 +1745,11 @@ async function generateImages(settings, body) {
         attempts,
         prompt: prompt.slice(0, 2000),
       })
-      throw new Error('接口把你上传的参考图原样返回了，没有真正生成（对接方降级/兜底返回）。已自动重试 1 次仍然如此：请重新生成，或到「设置」里更换接口 / 模型。')
+      throw wbError(
+        'reference-echoed',
+        '接口把你上传的参考图原样返回了，没有真正生成（对接方降级/兜底返回）。已自动重试 1 次仍然如此：请重新生成，或到「设置」里更换接口 / 模型。',
+        502,
+      )
     }
     break
   }
@@ -1665,24 +1834,55 @@ function resolveImagePath(outputDir, rawName) {
   return resolved
 }
 
+/**
+ * Resolve one file that is about to be served to a real path that is still inside
+ * `rootDir`. Returns `{ path }` when it may be served, `{ reason: 'missing' }`
+ * when it is not there, `{ reason: 'refused' }` when it resolves outside the
+ * folder.
+ *
+ * `path.basename` already keeps a request from naming another directory, but a
+ * link *inside* the folder can still point elsewhere:
+ *   - a symlink / junction is followed by `realpath`, and the result must stay
+ *     inside the folder (compared on both real paths, so a symlinked folder or a
+ *     different casing cannot confuse the check);
+ *   - a hard link (`mklink /H`, no admin needed) is the *same file*, so
+ *     `realpath` reports the in-folder name and cannot see it. Such a file has
+ *     more than one link, so it is refused instead: the plugin never creates hard
+ *     links, every generated image and stored reference has exactly one.
+ */
+async function containedFile(rootDir, file) {
+  try {
+    const stats = await fs.lstat(file)
+    if (stats.nlink > 1) return { reason: 'refused' }
+    const realFile = await fs.realpath(file)
+    if (!isPathInside(await fs.realpath(rootDir), realFile)) return { reason: 'refused' }
+    return { path: realFile }
+  } catch {
+    return { reason: 'missing' }
+  }
+}
+
 async function serveImage(req, res) {
   if (!methodAllowed(req, res, ['GET'])) return
   const url = new URL(req.url, 'http://127.0.0.1')
   const settings = await readSettings()
   const outputDir = path.resolve(String(settings.outputDir || defaultOutputDir()))
   const file = resolveImagePath(outputDir, url.searchParams.get('name'))
-  if (!file) return sendError(res, 400, 'invalid image name')
+  if (!file) return sendError(res, 400, 'invalid-image-name', 'invalid image name')
+  const contained = await containedFile(outputDir, file)
+  if (!contained.path) return sendError(res, 404, 'image-not-found', 'image not found')
   let buffer
   try {
-    buffer = await fs.readFile(file)
+    buffer = await fs.readFile(contained.path)
   } catch {
-    return sendError(res, 404, 'image not found')
+    return sendError(res, 404, 'image-not-found', 'image not found')
   }
-  const ext = path.extname(file).toLowerCase()
+  const ext = path.extname(contained.path).toLowerCase()
   const type = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png'
   res.statusCode = 200
   res.setHeader('content-type', type)
   res.setHeader('cache-control', 'private, max-age=31536000, immutable')
+  res.setHeader('x-content-type-options', 'nosniff')
   res.end(buffer)
 }
 
@@ -1893,16 +2093,23 @@ async function serveRefImage(req, res) {
   const name = path.basename(String(url.searchParams.get('name') || ''))
   const allowed = PRODUCT_REF_PATTERN.test(name)
     || Object.keys(REF_KINDS).some(kind => REF_KINDS[kind].pattern.test(name))
-  if (!allowed) return sendError(res, 400, 'invalid ref name')
+  if (!allowed) return sendError(res, 400, 'invalid-ref-name', 'invalid ref name')
+  const dir = profileRefsDir()
+  // Same containment as /image: the name is whitelisted, but a link stored in the
+  // refs folder must not become a way to read a file from outside it.
+  const contained = await containedFile(dir, path.join(dir, name))
+  if (contained.reason === 'missing') return sendError(res, 404, 'ref-not-found', 'ref not found')
+  if (!contained.path) return sendError(res, 400, 'ref-outside-dir', '参考图路径不在参考图目录内')
   let buffer
   try {
-    buffer = await fs.readFile(path.join(profileRefsDir(), name))
+    buffer = await fs.readFile(contained.path)
   } catch {
-    return sendError(res, 404, 'ref not found')
+    return sendError(res, 404, 'ref-not-found', 'ref not found')
   }
   res.statusCode = 200
   res.setHeader('content-type', refMediaTypeFor(name))
   res.setHeader('cache-control', 'no-store')
+  res.setHeader('x-content-type-options', 'nosniff')
   res.end(buffer)
 }
 
@@ -1921,9 +2128,9 @@ function makeRefHandler(kind) {
       await deleteRef(kind)
       return sendJson(res, 200, { ok: true })
     }
-    const body = await readJsonBody(req)
+    const body = await readJsonBody(req, { limit: referenceJsonBodyLimit(1) })
     const reference = normalizeReference(body)
-    if (!reference) return sendError(res, 400, '参考图为空')
+    if (!reference) return sendError(res, 400, 'missing-reference', '参考图为空')
     const item = await writeRef(kind, reference.buffer, reference.mediaType)
     sendJson(res, 200, { ok: true, item })
   }
@@ -2001,32 +2208,54 @@ exit 0`
 
 const POWERSHELL_EXE = `${process.env.SystemRoot || 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`
 
-function openNewWindow(dir) {
-  try {
-    // No windowsHide: Explorer is a GUI app and a hidden-start window would never
-    // become visible (that made "打开输出目录" look broken).
-    const child = spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' })
-    child.on('error', () => {})
+/**
+ * Spawn a detached GUI helper and report whether the OS really started it.
+ * `spawn()` does not throw for a missing executable: the failure arrives as an
+ * `error` event, which used to be swallowed while the caller still returned true
+ * (so "打开输出目录" reported success without opening anything). Resolves false on
+ * any spawn error, true once the child is up, and true after a short grace period
+ * if the platform emits neither event.
+ */
+function openDetached(command, args) {
+  return new Promise(resolve => {
+    let settled = false
+    const settle = value => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    let child
+    try {
+      // No windowsHide: Explorer is a GUI app and a hidden-start window would never
+      // become visible (that made "打开输出目录" look broken).
+      child = spawn(command, args, { detached: true, stdio: 'ignore' })
+    } catch {
+      settle(false)
+      return
+    }
+    child.once('error', () => settle(false))
+    child.once('spawn', () => settle(true))
     child.unref()
-    return true
-  } catch {
-    return false
-  }
+    setTimeout(() => settle(true), 500).unref?.()
+  })
 }
 
-function openFolder(dir) {
+function openNewWindow(dir) {
+  return openDetached('explorer.exe', [dir])
+}
+
+/** Resolves 'focused' (an existing Explorer window was brought forward),
+ *  'opened' (a new window/file manager was started) or false (nothing was
+ *  started, so the caller must report a real failure). */
+async function openFolder(dir) {
   if (process.platform !== 'win32') {
-    try {
-      const command = process.platform === 'darwin' ? 'open' : 'xdg-open'
-      const child = spawn(command, [dir], { detached: true, stdio: 'ignore' })
-      child.on('error', () => {})
-      child.unref()
-      return Promise.resolve('opened')
-    } catch {
-      return Promise.resolve(false)
-    }
+    const command = process.platform === 'darwin' ? 'open' : 'xdg-open'
+    return (await openDetached(command, [dir])) ? 'opened' : false
   }
   return new Promise(resolve => {
+    const openFresh = () => {
+      openNewWindow(dir).then(opened => resolve(opened ? 'opened' : false))
+    }
     try {
       // Try to focus an existing window first; fall back to a new Explorer window.
       execFile(
@@ -2041,14 +2270,53 @@ function openFolder(dir) {
           // Only an exact FOUND means an existing window was focused; NOTFOUND and
           // any failure open a fresh Explorer window.
           const focused = String(stdout || '').trim() === 'FOUND'
-          if (!focused) openNewWindow(dir)
-          resolve(focused ? 'focused' : 'opened')
+          if (focused) resolve('focused')
+          else openFresh()
         },
       )
     } catch {
-      resolve(openNewWindow(dir) ? 'opened' : false)
+      openFresh()
     }
   })
+}
+
+/**
+ * True when `candidate` is `rootDir` itself or something below it. Both sides are
+ * resolved first, so a relative path, `..`, a trailing separator or a
+ * differently-cased spelling on Windows cannot slip out; the comparison is
+ * separator-aware so `C:\out2` is not accepted for the root `C:\out`.
+ */
+function isPathInside(rootDir, candidate) {
+  const normalize = value => (process.platform === 'win32' ? value.toLowerCase() : value)
+  const root = normalize(path.resolve(rootDir))
+  const target = normalize(path.resolve(candidate))
+  if (root === target) return true
+  return target.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`)
+}
+
+/** True when both values point at the same directory (case-insensitive on
+ *  Windows), so `C:\Out` and `c:\out` are the same folder. */
+function isSamePath(a, b) {
+  const normalize = value => (process.platform === 'win32' ? value.toLowerCase() : value)
+  return normalize(path.resolve(a)) === normalize(path.resolve(b))
+}
+
+/** Resolved directory `/reveal` may open, or undefined when it is outside the
+ *  output folder. The real paths are re-checked when they exist, so a
+ *  symlink/junction inside the output folder is not a way out either. */
+async function resolveRevealDir(outputDir, requested) {
+  const root = path.resolve(outputDir)
+  const target = requested ? path.resolve(requested) : root
+  if (!isPathInside(root, target)) return undefined
+  try {
+    const realRoot = await fs.realpath(root)
+    const realTarget = await fs.realpath(target)
+    if (!isPathInside(realRoot, realTarget)) return undefined
+  } catch {
+    // Target (or the output folder itself) does not exist yet: the lexical check
+    // above is the contract, and only a directory inside it is created below.
+  }
+  return target
 }
 
 /** Builds the next settings object from a POST body without mutating the current
@@ -2210,13 +2478,56 @@ function createHandlers(ctx) {
       if (!methodAllowed(req, res, ['GET'])) return
       const settings = await readSettings()
       const active = activeProfile(settings)
+      const activePublic = publicProfile(active)
+      const outputDir = path.resolve(String(settings.outputDir || defaultOutputDir()))
+      // "Why can't I generate?" has to be answerable from this one response:
+      // profile + key, model, and whether the output folder really exists and is
+      // writable (a read-only or removed folder used to fail only at save time).
+      let outputDirExists = false
+      try {
+        outputDirExists = (await fs.stat(outputDir)).isDirectory()
+      } catch {
+        outputDirExists = false
+      }
+      let outputDirWritable = false
+      if (outputDirExists) {
+        try {
+          await fs.access(outputDir, fsConstants.W_OK)
+          outputDirWritable = true
+        } catch {
+          outputDirWritable = false
+        }
+      }
+      const reasons = []
+      if (!settingsHealthy) reasons.push('settings-corrupt')
+      if (!activePublic.hasApiKey) reasons.push('missing-api-key')
+      if (!outputDirExists) reasons.push('output-dir-missing')
+      else if (!outputDirWritable) reasons.push('output-dir-unwritable')
       sendJson(res, 200, {
         ok: true,
+        canGenerate: reasons.length === 0,
+        reasons,
         settingsFile: settingsFile(),
-        outputDir: path.resolve(String(settings.outputDir || defaultOutputDir())),
-        hasApiKey: publicProfile(active).hasApiKey,
-        activeProfile: { id: active.id, name: active.name, model: active.model },
+        settingsHealthy,
+        warning: settingsWarning || undefined,
+        outputDir,
+        outputDirExists,
+        outputDirWritable,
+        hasApiKey: activePublic.hasApiKey,
+        activeProfile: {
+          id: active.id,
+          name: active.name,
+          model: active.model,
+          baseUrl: active.baseUrl,
+          requestType: activePublic.requestType,
+          quality: activePublic.quality,
+        },
         profileCount: settings.profiles.length,
+        vision: {
+          activeId: settings.vision.activeId || '',
+          profileCount: (settings.vision.profiles || []).length,
+          ready: Boolean(activeVisionProfile(settings.vision)),
+        },
         platform: process.platform,
         node: process.version,
       })
@@ -2248,7 +2559,7 @@ function createHandlers(ctx) {
       const settings = await readSettings()
       const { base, apiKey, savedProfile, baseDiffers } = resolveProbeCredentials(settings, body)
       if (!apiKey) {
-        return sendError(res, 400, baseDiffers
+        return sendError(res, 400, 'missing-api-key', baseDiffers
           ? '填写的接口地址与已保存配置不同，请先填写对应接口的 API Key 再测试'
           : '尚未配置 API Key（可先填写再测试，无需保存）')
       }
@@ -2260,11 +2571,15 @@ function createHandlers(ctx) {
           signal: timeoutSignal(20000),
         })
         const text = await response.text()
-        if (!response.ok) return sendJson(res, 200, { ok: false, error: `HTTP ${response.status}: ${trim(text, 300)}` })
+        if (!response.ok) {
+          const detail = `HTTP ${response.status}: ${trim(text, 300)}`
+          return sendJson(res, 200, { ok: false, code: classifyError(imageApiError(detail, response.status)).code, error: detail })
+        }
         const label = savedProfile ? savedProfile.name : base
         sendJson(res, 200, { ok: true, endpoint, message: `${label} · API Key 可用（/models 探测成功）` })
       } catch (error) {
-        sendJson(res, 200, { ok: false, error: String(error && error.message ? error.message : error) })
+        const message = String(error && error.message ? error.message : error)
+        sendJson(res, 200, { ok: false, code: classifyError(error).code, error: message })
       }
     },
 
@@ -2315,17 +2630,15 @@ function createHandlers(ctx) {
         await queueProductRefsMutation(() => deleteProductRefs())
         return sendJson(res, 200, { ok: true, items: [] })
       }
-      const body = await readJsonBody(req)
-      const rawList = Array.isArray(body.references) ? body.references : []
-      const references = []
-      for (const raw of rawList) {
-        const reference = normalizeReference(raw)
-        if (reference && references.length < PRODUCT_REF_LIMIT) references.push(reference)
-      }
+      const body = await readJsonBody(req, { limit: referenceJsonBodyLimit(PRODUCT_REF_LIMIT) })
+      // Over the limit is an error, not a silent truncation: the page keeps at
+      // most PRODUCT_REF_LIMIT photos, so a longer list can only come from a
+      // request that bypassed the page.
+      const references = fillReferences(body.references, PRODUCT_REF_LIMIT)
       // An empty body must not silently wipe the saved product photos; clearing
       // is an explicit action (client sends clear:true, or uses DELETE).
       if (references.length === 0 && body.clear !== true) {
-        return sendError(res, 400, '没有有效的商品参考图；如需清空请使用 DELETE 或 clear:true')
+        return sendError(res, 400, 'missing-reference', '没有有效的商品参考图；如需清空请使用 DELETE 或 clear:true')
       }
       const items = await queueProductRefsMutation(() => writeProductRefs(references))
       sendJson(res, 200, { ok: true, items })
@@ -2333,59 +2646,57 @@ function createHandlers(ctx) {
 
     async extract(req, res) {
       if (!methodAllowed(req, res, ['POST'])) return
-      const body = await readJsonBody(req)
+      const body = await readJsonBody(req, { limit: referenceJsonBodyLimit(EXTRACT_REF_LIMIT) })
       const settings = await readSettings()
-      const rawList = Array.isArray(body.references) ? body.references : []
-      const references = []
-      for (const raw of rawList) {
-        const reference = normalizeReference(raw)
-        if (reference && references.length < 4) references.push(reference)
-      }
-      if (references.length === 0) return sendError(res, 400, '请先上传商品参考图')
+      const references = fillReferences(body.references, EXTRACT_REF_LIMIT)
+      if (references.length === 0) return sendError(res, 400, 'missing-reference', '请先上传商品参考图')
       sendJson(res, 200, { ok: true, ...(await extractKeyElements(ctx, settings, references)) })
     },
 
     async extractSize(req, res) {
       if (!methodAllowed(req, res, ['POST'])) return
-      const body = await readJsonBody(req)
+      const body = await readJsonBody(req, { limit: referenceJsonBodyLimit(EXTRACT_SIZE_REF_LIMIT) })
       const settings = await readSettings()
-      const rawList = Array.isArray(body.references) ? body.references : []
-      const references = []
-      for (const raw of rawList) {
-        const reference = normalizeReference(raw)
-        if (reference && references.length < 2) references.push(reference)
-      }
-      if (references.length === 0) return sendError(res, 400, '请先上传尺码表图片')
+      const references = fillReferences(body.references, EXTRACT_SIZE_REF_LIMIT)
+      if (references.length === 0) return sendError(res, 400, 'missing-reference', '请先上传尺码表图片')
       sendJson(res, 200, { ok: true, ...(await extractSizeTable(ctx, settings, references)) })
     },
 
     async generate(req, res) {
       if (!methodAllowed(req, res, ['POST'])) return
-      const body = await readJsonBody(req)
+      const body = await readJsonBody(req, { limit: referenceJsonBodyLimit(GENERATE_REF_LIMIT) })
       const settings = await readSettings()
       try {
         sendJson(res, 200, await generateImages(settings, body))
       } catch (error) {
         // Keep a small failure record next to the generated-image sidecars; a
         // "concurrency keeps failing" report can then be diagnosed from disk.
-        try {
-          const outputDir = path.resolve(String(settings.outputDir || defaultOutputDir()))
-          const profile = (body.profileId && settings.profiles.find(item => item.id === body.profileId)) || activeProfile(settings)
-          const references = Array.isArray(body.references) ? body.references : []
-          const referenceCount = references.length + (body.reference ? 1 : 0)
-          await writeFailure(outputDir, {
-            at: Date.now(),
-            error: String(error && error.message ? error.message : error),
-            mode: referenceCount > 0 ? 'edit' : 'generate',
-            profileId: profile.id,
-            profileName: profile.name,
-            model: String(body.model || profile.model || ''),
-            size: String(body.size || ''),
-            refCount: referenceCount,
-            prompt: String(body.prompt || '').slice(0, 2000),
-          })
-        } catch {
-          // diagnostics only; the caller still gets the real error
+        // Only upstream/internal failures are worth a record: a rejected request
+        // (too many references, bad image, prompt too long, body too large, ...) is
+        // answered with a 4xx and must not litter the output folder with files the
+        // user has to wonder about.
+        const failure = classifyError(error)
+        if (failure.status >= 500) {
+          try {
+            const outputDir = path.resolve(String(settings.outputDir || defaultOutputDir()))
+            const profile = (body.profileId && settings.profiles.find(item => item.id === body.profileId)) || activeProfile(settings)
+            const references = Array.isArray(body.references) ? body.references : []
+            const referenceCount = references.length + (body.reference ? 1 : 0)
+            await writeFailure(outputDir, {
+              at: Date.now(),
+              code: failure.code,
+              error: String(error && error.message ? error.message : error),
+              mode: referenceCount > 0 ? 'edit' : 'generate',
+              profileId: profile.id,
+              profileName: profile.name,
+              model: String(body.model || profile.model || ''),
+              size: String(body.size || ''),
+              refCount: referenceCount,
+              prompt: String(body.prompt || '').slice(0, 2000),
+            })
+          } catch {
+            // diagnostics only; the caller still gets the real error
+          }
         }
         throw error
       }
@@ -2403,16 +2714,47 @@ function createHandlers(ctx) {
       if (!methodAllowed(req, res, ['POST'])) return
       const settings = await readSettings()
       const outputDir = path.resolve(String(settings.outputDir || defaultOutputDir()))
-      try {
-        await fs.mkdir(outputDir, { recursive: true })
-      } catch {
-        // opening can still report the failure below
+      // Nothing but the output folder (or a subfolder of it) may be opened: a
+      // caller-supplied `path` is accepted for convenience, but it is resolved and
+      // contained here instead of being handed to Explorer as-is.
+      const body = await readJsonBody(req)
+      const requested = typeof body.path === 'string' ? body.path.trim() : ''
+      const target = await resolveRevealDir(outputDir, requested)
+      if (!target) {
+        return sendError(res, 403, 'reveal-outside-output-dir', '只能打开输出目录或其子目录')
       }
-      const result = await openFolder(outputDir)
+      // Only the output folder itself is created on demand (so "打开输出目录"
+      // works before the first image exists). A caller-supplied subfolder is never
+      // created: that turned /reveal into a recursive mkdir for any depth inside
+      // the folder, and it must only ever open something that already exists.
+      if (isSamePath(target, outputDir)) {
+        try {
+          await fs.mkdir(target, { recursive: true })
+        } catch {
+          // opening can still report the failure below
+        }
+      } else {
+        let stats
+        try {
+          stats = await fs.stat(target)
+        } catch {
+          return sendError(res, 404, 'dir-not-found', `目录不存在：${target}`)
+        }
+        if (!stats.isDirectory()) {
+          return sendError(res, 404, 'dir-not-found', `不是目录：${target}`)
+        }
+      }
+      const result = await openFolder(target)
+      // `openFolder` only resolves false when nothing was started, so this is a
+      // real failure now instead of an unconditional ok:true.
+      if (result === false) {
+        return sendError(res, 500, 'open-failed', `无法打开输出目录：${target}`)
+      }
       sendJson(res, 200, {
-        ok: result !== false,
+        ok: true,
         focused: result === 'focused',
         outputDir,
+        path: target,
       })
     },
 
@@ -2420,19 +2762,58 @@ function createHandlers(ctx) {
   return handlers
 }
 
-/** Hostnames the web GUI is legitimately served from (loopback + the URLs the
- *  harness advertises). Used to reject DNS-rebinding requests, which always
- *  carry the attacker's hostname in Host even though the socket hits localhost. */
+/** Trust for the raw webServer routes.
+ *
+ *  `trustedOrigins` holds the exact `scheme//host:port` keys the GUI is served
+ *  from (loopback + the URLs the harness advertises). `trustedLocalEndpoints`
+ *  holds the `scheme//port` of the trusted origins that are bound locally, so a
+ *  loopback alias (`localhost` / `127.0.0.1` / `[::1]`) of *that same scheme and
+ *  port* is accepted too — and nothing else: another port or another scheme
+ *  (`https://127.0.0.1:58074` for an `http://` server) stays untrusted.
+ *  `trustedRequestHostnames` stays a hostname set for the Host-header check. */
+const trustedOrigins = new Set()
+const trustedLocalEndpoints = new Set()
 const trustedRequestHostnames = new Set()
 
+/** `scheme//host:port` of an absolute http(s) URL, with the default port made
+ *  explicit (`http://localhost` === `http://localhost:80`); '' when unusable. */
+function originKeyOf(value) {
+  let url
+  try {
+    url = new URL(String(value == null ? '' : value).trim())
+  } catch {
+    return ''
+  }
+  const scheme = url.protocol.toLowerCase()
+  if (scheme !== 'http:' && scheme !== 'https:') return ''
+  const host = url.hostname.toLowerCase()
+  if (!host) return ''
+  const port = url.port || (scheme === 'https:' ? '443' : '80')
+  return `${scheme}//${host}:${port}`
+}
+
+function splitOriginKey(key) {
+  const separator = key.indexOf('//')
+  const scheme = key.slice(0, separator)
+  const rest = key.slice(separator + 2)
+  const colon = rest.lastIndexOf(':')
+  return { scheme, host: rest.slice(0, colon), port: rest.slice(colon + 1) }
+}
+
 function configureRequestTrust(ctx) {
+  trustedOrigins.clear()
+  trustedLocalEndpoints.clear()
   trustedRequestHostnames.clear()
   const remember = value => {
-    try {
-      const hostname = new URL(String(value)).hostname.toLowerCase()
-      if (hostname) trustedRequestHostnames.add(hostname)
-    } catch {
-      // malformed origin, ignore
+    const key = originKeyOf(value)
+    if (!key) return
+    const parts = splitOriginKey(key)
+    trustedOrigins.add(key)
+    trustedRequestHostnames.add(parts.host)
+    // A wildcard bind (0.0.0.0 / ::) serves the same port locally, so it trusts
+    // the loopback aliases of that endpoint as well.
+    if (isLoopbackHostname(parts.host) || parts.host === '0.0.0.0' || parts.host === '::') {
+      trustedLocalEndpoints.add(`${parts.scheme}//${parts.port}`)
     }
   }
   try {
@@ -2445,6 +2826,11 @@ function configureRequestTrust(ctx) {
     if (webApp && typeof webApp.getAdvertisedUrl === 'function') remember(webApp.getAdvertisedUrl())
   } catch {
     // webApp is optional
+  }
+  // With no usable origin every request that carries an Origin header is refused,
+  // which would look like "the workbench page is broken". Say so once instead.
+  if (trustedOrigins.size === 0) {
+    console.warn('[personal-workbench] 未能获取 Web GUI 的 Origin，所有带 Origin 的请求都会被拒绝；请检查 webServer.getOrigin()')
   }
 }
 
@@ -2460,9 +2846,26 @@ function isTrustedHostname(hostname) {
   return isLoopbackHostname(hostname) || trustedRequestHostnames.has(String(hostname || '').toLowerCase())
 }
 
+/** An Origin/Referer URL is trusted only on an exact scheme+host+port match, or
+ *  as a loopback alias of a trusted local endpoint (same scheme, same port). */
+function isTrustedOrigin(value) {
+  const key = originKeyOf(value)
+  if (!key) return false
+  if (trustedOrigins.has(key)) return true
+  const parts = splitOriginKey(key)
+  if (!isLoopbackHostname(parts.host)) return false
+  return trustedLocalEndpoints.has(`${parts.scheme}//${parts.port}`)
+}
+
+const HOST_HEADER_PATTERN = /^[A-Za-z0-9.\-:\[\]]+$/
+
 function hostnameFromHostHeader(raw) {
   const value = String(raw || '').trim()
   if (!value) return ''
+  // Fail closed on anything that is not a plain host[:port]: the WHATWG parser
+  // would happily read `localhost#@evil` as `localhost`, which would let a
+  // hand-written Host header pass as a trusted name.
+  if (!HOST_HEADER_PATTERN.test(value)) return ''
   try {
     return new URL(`http://${value}`).hostname.toLowerCase()
   } catch {
@@ -2472,9 +2875,12 @@ function hostnameFromHostHeader(raw) {
 
 /** Raw webServer routes bypass the Harness API authentication, so they must
  *  reject browser CSRF *and* DNS-rebinding attempts themselves:
- *  - the Host must be a loopback/advertised hostname (rebinding sends another
- *    hostname while the socket reaches 127.0.0.1);
- *  - Origin/Referer, when present, must also be trusted;
+ *  - `Sec-Fetch-Site: cross-site` is refused outright;
+ *  - the Host must be a loopback/advertised hostname and a plain host[:port]
+ *    (rebinding sends another hostname while the socket reaches 127.0.0.1);
+ *  - a present `Origin` (else `Referer`) must match a trusted origin exactly:
+ *    same scheme, same host, same port — a page on `localhost:<other port>` is a
+ *    different origin and must not drive this API;
  *  - requests without either header are local scripts/CLI and stay usable. */
 function requestOriginAllowed(req) {
   const site = String(req.headers['sec-fetch-site'] || '').toLowerCase()
@@ -2483,35 +2889,27 @@ function requestOriginAllowed(req) {
   if (!hostName || !isTrustedHostname(hostName)) return false
   const origin = String(req.headers.origin || '')
   if (origin) {
-    try {
-      return isTrustedHostname(new URL(origin).hostname)
-    } catch {
-      // "Origin: null" (sandboxed iframe / opaque origin) is never trusted.
-      return false
-    }
+    // "Origin: null" (sandboxed iframe / opaque origin) is never a URL, so it
+    // fails here and is never trusted.
+    return isTrustedOrigin(origin)
   }
   const referer = String(req.headers.referer || '')
-  if (referer) {
-    try {
-      return isTrustedHostname(new URL(referer).hostname)
-    } catch {
-      return false
-    }
-  }
+  if (referer) return isTrustedOrigin(referer)
   return true
 }
 
 function wrap(handler) {
   return (req, res) => {
     if (!requestOriginAllowed(req)) {
-      sendError(res, 403, '跨站请求已拒绝：请从工作台页面操作')
+      sendError(res, 403, 'cross-site-denied', '跨站请求已拒绝：请从工作台页面操作')
       return
     }
     Promise.resolve()
       .then(() => handler(req, res))
       .catch(error => {
         try {
-          sendError(res, 500, error && error.message ? error.message : String(error))
+          const failure = classifyError(error)
+          sendError(res, failure.status, failure.code, error && error.message ? error.message : String(error))
         } catch {
           // response already finished
         }

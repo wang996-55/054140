@@ -30,8 +30,29 @@ window.__ModuleLoader__.load({
     const LS_ACCENT = 'pbw.accent.v1'
     const LS_FIDELITY = 'pbw.fidelity.v1'
     const LS_TEMPLATES = 'pbw.templates.v1'
+    // 早期「尺码表」功能的遗留键：现在既不读也不写。保留声明是为了让审计/迁移
+    // 脚本能认出这个键属于本插件，不要把它当成脏数据删掉（旧用户的键值仍在磁盘上）。
+    // 参考 docs/audit-2026-10-20.md 的 A-09。
     const LS_SIZETABLE = 'pbw.sizetable.v1'
     const LS_SIZEPOSTER = 'pbw.sizeposter.v1'
+
+    // A job that never settles would hold one of the MAX_CONCURRENT_JOBS slots
+    // forever, so a client watchdog closes it after this long. It is far longer
+    // than the Host's own provider timeout: it only catches a lost response or a
+    // socket that never ends, not a genuinely slow generation.
+    const JOB_WATCHDOG_MS = 10 * 60 * 1000
+    // Pending (running + waiting) jobs the queue accepts before it refuses more.
+    const MAX_PENDING_JOBS = 12
+    // Rows kept in the queue card; running/queued rows are never dropped.
+    const MAX_JOB_ROWS = 24
+    // A failed row keeps its request so "retry" needs no re-upload. Reference
+    // photos are base64 and can be megabytes, so only the newest few failures
+    // keep one (the rest stay as plain error rows).
+    const MAX_RETRY_PAYLOADS = 3
+    // A provider message appended after an unmapped error code is cut here.
+    const ERROR_DETAIL_MAX = 160
+    // "Click again to delete" window on the library/settings pages.
+    const CONFIRM_DELETE_MS = 4000
 
     // ---------------------------------------------------------------- locale
     const STR = {
@@ -309,6 +330,56 @@ window.__ModuleLoader__.load({
         accentHint: '强调色会立刻应用到整个 Harness 界面并记住选择。',
         aboutTitle: '关于',
         aboutBody: '这是专属工作台插件：Host 侧在本机代理图片接口（Key 只保存在本机配置文件），Client 侧提供工作台页面。模特四视图、商品图与场景图会按顺序作为 /images/edits 的多张参考图发送（最多 6 张：1 模特四视图 + 4 商品图 + 1 场景图）；未上传任何参考图时走文生图 /images/generations。',
+        // 上传 / 队列 / 持久化的提示语（原先散落在组件里的硬编码中文）
+        pickImageFormat: '请选择 PNG / JPG / WebP 图片',
+        refImageTooLarge: '参考图需小于 8MB',
+        imageUnsupported: '不支持的图片格式',
+        refPersistFailed: '商品图本次可用，但未能持久保存：',
+        productAddBusy: '正在处理上一批图片，请稍候再选',
+        productRemoveBusy: '正在处理上一批图片，请稍候再操作',
+        productAlreadyAdded: '这些图片已在商品参考图里',
+        productRefsLimit: '商品参考图最多 4 张，本次未添加，请减少选择数量',
+        extractStale: '图片已变化，本次识别结果已丢弃，请重新提取',
+        revealFailed: '无法打开目录',
+        sizeChartTooLarge: '尺码表图片需小于 8MB',
+        sizeChartUnreadable: '图片格式无法识别',
+        sizeChartNoTable: '未能识别出尺码表，请换一张更清晰的截图',
+        logoTooLarge: 'Logo 需小于 5MB',
+        logoPersistFailed: 'Logo 本次可用，但未能持久保存：',
+        copyFailed: '复制失败，请手动选择文本复制',
+        // 错误归一：Host 返回 code 时按 code 取文案，缺失时按状态码 / 文案兜底
+        errMissingKey: '接口配置缺少 API Key 或接口地址：请到「设置」里补全。',
+        errBodyTooLarge: '上传内容太大，接口拒绝接收：请减少参考图数量或降低分辨率后重试。',
+        errInvalidReference: '接口无法接受这张参考图：请换一张（建议 PNG / JPG，单张小于 8MB）。',
+        errHostUnreachable: '无法连接工作台本地服务：请确认 Harness 已加载本插件后刷新页面。',
+        errBadResponse: '接口返回的不是有效 JSON：请检查接口地址是否指向 OpenAI 兼容服务。',
+        errProvider: '图片接口返回错误：稍后重试；若一直失败，请检查接口地址、模型名或更换接口。',
+        errUnknown: '请求失败',
+        // Host 侧的 code（index.js 里 wbError / sendError 的取值）各自的文案
+        errCrossSite: '请求被判定为跨站来源而拒绝：请从 Harness 的工作台页面里操作。',
+        errImageNotFound: '找不到这张图片（可能已被清理）：请刷新列表后重试。',
+        errInvalidImageName: '图片文件名不合法：请重命名后重新上传。',
+        errInvalidJson: '请求内容不是合法的 JSON（插件内部错误）：请刷新页面后重试。',
+        errInvalidRefName: '参考图文件名不合法：请重命名后重新上传。',
+        errMethodNotAllowed: '接口不支持这个请求方法（前后端版本不一致）：请更新插件后重试。',
+        errMissingReference: '没有可用的参考图：请重新上传商品参考图后重试。',
+        errNoImage: '接口返回成功但没有可用图片：请稍后重试，或换一个模型 / 接口。',
+        errOutputDir: '输出目录不可写：请到「设置」里换一个目录，或检查该目录的写入权限。',
+        errRefNotFound: '找不到这张参考图（可能已被清理）：请重新上传。',
+        errReferenceCount: '参考图数量超过上限：请减少张数后重试。',
+        errReferenceEchoed: '接口把参考图原样返回、没有真正生成：请重试，或换一个支持图片编辑的模型。',
+        errReferenceTooLarge: '单张参考图过大：请压缩或换更小的图片后重试。',
+        errReferenceTotalSize: '参考图总大小超过上限：请减少数量或压缩后重试。',
+        errRevealOutside: '只能打开输出目录里的文件。',
+        errSettingsCorrupt: '本机设置文件损坏，保存已暂停：请修复后重试，或恢复 .bak 备份。',
+        errPromptTooLong: '提示词太长：请精简商品描述或提示词后重试（上限见设置）。',
+        errOpenFailed: '无法打开输出目录：请检查该目录是否还存在，或直接手动打开。',
+        errDirNotFound: '输出目录不存在或不是文件夹：请到「设置」里重新选择，或新建该目录。',
+        errRefOutsideDir: '参考图不在允许的参考图目录里：请重新上传这张图。',
+        queueDuplicate: '同样的任务已在排队或生成中，请等它完成。',
+        queueRetry: '重试',
+        storeQuota: '本机存储已满，设置无法自动保存（本次修改仍然有效）：请清理浏览器存储后重试。',
+        storeUnavailable: '浏览器存储不可用，设置无法自动保存（本次修改仍然有效）。',
         close: '关闭',
       },
       en: {
@@ -585,6 +656,56 @@ window.__ModuleLoader__.load({
         accentHint: 'The accent applies to the whole Harness UI immediately and is remembered.',
         aboutTitle: 'About',
         aboutBody: 'Personal workbench plugin: the Host half proxies the image API locally (the key stays in a local config file); the Client half renders this page. The model sheet, product photos and scene photo are sent in order as multiple references to /images/edits (up to 6: 1 model sheet + 4 product photos + 1 scene photo); without references it uses text-to-image /images/generations.',
+        // Upload / queue / persistence wording (previously hardcoded Chinese)
+        pickImageFormat: 'Choose a PNG / JPG / WebP image',
+        refImageTooLarge: 'Reference photos must be under 8MB each',
+        imageUnsupported: 'Unsupported image format',
+        refPersistFailed: 'The product photos work for now but could not be saved:',
+        productAddBusy: 'Still processing the previous batch — try again in a moment',
+        productRemoveBusy: 'Still processing the previous batch — try again in a moment',
+        productAlreadyAdded: 'Those photos are already in the product references',
+        productRefsLimit: 'At most 4 product references: nothing was added, select fewer photos',
+        extractStale: 'The photos changed, so this result was discarded — extract again',
+        revealFailed: 'Could not open the folder',
+        sizeChartTooLarge: 'The size-chart photo must be under 8MB',
+        sizeChartUnreadable: 'Unrecognised image format',
+        sizeChartNoTable: 'No size chart recognised — try a clearer screenshot',
+        logoTooLarge: 'The logo must be under 5MB',
+        logoPersistFailed: 'The logo works for now but could not be saved:',
+        copyFailed: 'Copy failed — select the text manually',
+        // Error normalisation: a Host `code` wins, otherwise status / message
+        errMissingKey: 'The API profile is missing its key or endpoint: complete it in Settings.',
+        errBodyTooLarge: 'The upload was too large for the API: use fewer reference photos or a lower resolution.',
+        errInvalidReference: 'The API could not accept a reference photo: try another one (PNG / JPG, under 8MB).',
+        errHostUnreachable: 'Cannot reach the local workbench service: make sure the plugin is loaded in Harness, then refresh.',
+        errBadResponse: 'The API did not return valid JSON: check the endpoint points at an OpenAI-compatible service.',
+        errProvider: 'The image API returned an error: retry later; if it keeps failing, check the endpoint and model or switch profiles.',
+        errUnknown: 'Request failed',
+        // Host error codes (the values used by wbError / sendError in index.js)
+        errCrossSite: 'The request was rejected as cross-site: use the workbench page inside Harness.',
+        errImageNotFound: 'That image no longer exists (it may have been cleaned up): refresh the list and try again.',
+        errInvalidImageName: 'That image file name is not allowed: rename the file and upload it again.',
+        errInvalidJson: 'The request body was not valid JSON (internal plugin error): refresh the page and try again.',
+        errInvalidRefName: 'That reference file name is not allowed: rename the file and upload it again.',
+        errMethodNotAllowed: 'The endpoint rejected this request method (client and Host versions differ): update the plugin and try again.',
+        errMissingReference: 'No usable reference photo: upload the product photos again and retry.',
+        errNoImage: 'The API reported success but returned no image: retry, or switch to another model or endpoint.',
+        errOutputDir: 'The output folder is not writable: pick another folder in Settings, or check its permissions.',
+        errRefNotFound: 'That reference photo is gone (it may have been cleaned up): upload it again.',
+        errReferenceCount: 'Too many reference photos: remove some and retry.',
+        errReferenceEchoed: 'The API echoed the reference photo back instead of generating: retry, or switch to a model that supports image editing.',
+        errReferenceTooLarge: 'One reference photo is too large: compress it or use a smaller image and retry.',
+        errReferenceTotalSize: 'The reference photos exceed the total size limit: use fewer or smaller images.',
+        errRevealOutside: 'Only files inside the output folder can be opened.',
+        errSettingsCorrupt: 'The local settings file is unreadable and saving is paused: fix it or restore the .bak backup.',
+        errPromptTooLong: 'The prompt is too long: shorten the product description or the prompt and try again.',
+        errOpenFailed: 'The output folder could not be opened: check that it still exists, or open it yourself.',
+        errDirNotFound: 'The output folder is missing or not a folder: pick another one in Settings, or create it.',
+        errRefOutsideDir: 'That reference file is outside the allowed reference folder: upload it again.',
+        queueDuplicate: 'The same job is already queued or running — wait for it to finish.',
+        queueRetry: 'Retry',
+        storeQuota: 'Local storage is full, so settings were not saved (this session still works): free browser storage and try again.',
+        storeUnavailable: 'Browser storage is unavailable, so settings were not saved (this session still works).',
         close: 'Close',
       },
     }
@@ -865,12 +986,88 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * Writes one preference. The result is returned instead of swallowed: a full
+     * profile (QuotaExceededError) or disabled storage (SecurityError) means the
+     * choice only lives in this session, and the user has to be told once.
+     * @returns {{ok: boolean, error: Error|null}}
+     */
     function saveJson(key, value) {
       try {
         window.localStorage.setItem(key, JSON.stringify(value))
-      } catch {
-        // storage unavailable; preference is session-only
+        return { ok: true, error: null }
+      } catch (error) {
+        return { ok: false, error: error || new Error('storage unavailable') }
       }
+    }
+
+    /** Which STR key explains a failed write: full storage vs. no storage. */
+    function storageErrorStringKey(error) {
+      const name = String((error && error.name) || '')
+      const code = Number((error && error.code) || 0)
+      // Chrome/Safari use QuotaExceededError (22 / 1014 in Firefox).
+      if (/quota/i.test(name) || code === 22 || code === 1014) return 'storeQuota'
+      return 'storeUnavailable'
+    }
+
+    /** The saved accent is a chip id; anything else would leave the settings page
+     *  with no chip highlighted, so an unknown value falls back to the default. */
+    function loadAccentId() {
+      const saved = loadJson(LS_ACCENT, null)
+      const id = saved && typeof saved.id === 'string' ? saved.id.trim() : ''
+      return ACCENTS.some(accent => accent.id === id) ? id : 'default'
+    }
+
+    /**
+     * Normalises a persisted size poster. A hand-edited/corrupted entry used to
+     * reach the poster canvas and the editable table unchanged (a null column or
+     * a row without `values` threw during render and the error boundary replaced
+     * the whole workbench), so every field is checked here and a bad cell is
+     * dropped instead of taking the page down.
+     * @returns {{columns: Array, rows: Array, weightUnit: string}|null}
+     */
+    function normalizeSizeChart(value) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+      const columns = []
+      const seenKeys = new Set()
+      for (const column of Array.isArray(value.columns) ? value.columns : []) {
+        if (!column || typeof column !== 'object') continue
+        const name = typeof column.name === 'string' ? column.name.trim() : ''
+        if (!name) continue
+        let key = typeof column.key === 'string' ? column.key.trim() : ''
+        if (!key || seenKeys.has(key)) key = `c${columns.length}`
+        seenKeys.add(key)
+        columns.push({ key, name })
+      }
+      if (columns.length === 0) return null
+      const knownKeys = columns.map(column => column.key)
+      const rows = []
+      const seenIds = new Set()
+      for (const row of Array.isArray(value.rows) ? value.rows : []) {
+        if (!row || typeof row !== 'object') continue
+        let id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : `row-${rows.length}`
+        if (seenIds.has(id)) id = `row-${rows.length}-${seenIds.size}`
+        seenIds.add(id)
+        const size = typeof row.size === 'string' ? row.size : row.size === null || row.size === undefined ? '' : String(row.size)
+        const values = {}
+        const savedValues = row.values && typeof row.values === 'object' && !Array.isArray(row.values) ? row.values : {}
+        for (const key of knownKeys) {
+          const cell = savedValues[key]
+          if (cell === null || cell === undefined || cell === '') continue
+          // Only scalars can be measured, printed on the poster and shown in the
+          // cell input; a nested object/array/boolean is dropped.
+          if (typeof cell === 'string') values[key] = cell
+          else if (typeof cell === 'number' && Number.isFinite(cell)) values[key] = cell
+        }
+        rows.push({ id, size, values })
+      }
+      if (rows.length === 0) return null
+      return { columns, rows, weightUnit: value.weightUnit === 'jin' ? 'jin' : 'kg' }
+    }
+
+    /** The persisted poster, or null when there is nothing usable to restore. */
+    function loadSizePoster() {
+      return normalizeSizeChart(loadJson(LS_SIZEPOSTER, null))
     }
 
     // ------------------------------------------------------ reference tuning
@@ -885,7 +1082,9 @@ window.__ModuleLoader__.load({
       return new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result || ''))
-        reader.onerror = () => reject(reader.error || new Error('read failed'))
+        // The browser could not decode the picked file: reported through the same
+        // code path as an unsupported image instead of pasting the DOMException.
+        reader.onerror = () => reject(apiError('unreadable-image', 0, 'read failed', reader.error))
         reader.readAsDataURL(blob)
       })
     }
@@ -1492,24 +1691,64 @@ window.__ModuleLoader__.load({
       return text
     }
 
+    /** An Error carrying the machine-readable fields errorText() needs. */
+    function apiError(code, status, message, cause) {
+      const error = new Error(String(message || ''))
+      error.code = code
+      error.status = status || 0
+      if (cause) error.cause = cause
+      return error
+    }
+
+    /** An error whose message is already localized (a client-side validation
+     *  failure raised by this file, not by the Host). */
+    function userFacingError(message) {
+      return apiError('ui-message', 0, message)
+    }
+
+    /**
+     * One Host call. `options.signal` is passed straight through to fetch, so a
+     * caller can cancel; nothing here creates a signal of its own, which keeps
+     * short routes (settings/history/ref/extract) exactly as cheap as before and
+     * only lets the long generation call be cancelled.
+     */
     async function api(pathname, options) {
+      const init = options || {}
       let response
       try {
-        response = await fetch(`${API}${pathname}`, options)
+        response = await fetch(`${API}${pathname}`, init)
       } catch (error) {
-        throw new Error(`无法连接工作台本地服务（${error && error.message ? error.message : error}），请确认 Harness 已加载本插件。`)
+        // A cancelled request is not a network failure: the watchdog aborted it
+        // on purpose, so it must read as "timed out", never as "Host gone".
+        const aborted = Boolean(error && error.name === 'AbortError')
+          || Boolean(init.signal && init.signal.aborted)
+        if (aborted) {
+          throw apiError('timeout', 0, '请求已取消（本地超时或页面已关闭）', error)
+        }
+        // No response at all: the local Host route is gone (plugin unloaded) or
+        // the request never left the page. The code lets the UI say it in one
+        // short localized line instead of pasting the browser's English text.
+        const detail = error && error.message ? error.message : String(error)
+        throw apiError('host-unreachable', 0, `无法连接工作台本地服务（${detail}），请确认 Harness 已加载本插件。`, error)
       }
       let json = null
       try {
         json = await response.json()
       } catch {
-        // non-JSON response
+        // Non-JSON response: reported as `bad-response` below.
       }
+      // The Host is moving to {ok:false, code, error}; the code is preferred when
+      // present, and status/message stay as the fallback for older builds.
+      const code = json && typeof json.code === 'string' ? json.code.trim() : ''
+      const detail = json && typeof json.error === 'string' ? json.error : ''
       if (!response.ok) {
-        throw new Error((json && json.error) || `HTTP ${response.status}`)
+        throw apiError(code || `http-${response.status}`, response.status, detail || `HTTP ${response.status}`)
       }
-      if (json && json.ok === false) throw new Error(json.error || '请求失败')
-      return json || {}
+      if (json && json.ok === false) {
+        throw apiError(code || 'request-failed', response.status, detail || '请求失败')
+      }
+      if (!json) throw apiError('bad-response', response.status, `HTTP ${response.status}`)
+      return json
     }
 
     function formatTime(date) {
@@ -1519,25 +1758,219 @@ window.__ModuleLoader__.load({
 
     const BALANCE_ERROR_RE = /insufficient balance|余额不足|欠费|额度不足|quota exceeded|exceeded your current quota/i
     const AUTH_ERROR_RE = /invalid api key|unauthorized|无效的令牌|鉴权失败|authentication failed|authorization failed|接口返回 401|接口返回 402|HTTP 401|HTTP 402/i
+    const RATE_LIMIT_ERROR_RE = /429|rate limit|too many requests|请求过于频繁|限流/i
+    const TIMEOUT_ERROR_RE = /timeout|timed out|超时|aborted|abort/i
+    const NETWORK_ERROR_RE = /failed to fetch|load failed|networkerror|network request failed|fetch failed|err_connection|err_internet|econnrefused|无法连接|未加载本插件/i
+    const MISSING_KEY_ERROR_RE = /缺少 *api|未配置 *(api|接口)|no api key|missing api key|api key.*(missing|未填写)|请先在「设置」/i
+
+    // Host error code -> STR key: the code is matched loosely (case, dashes,
+    // underscores and spaces ignored), so `missing_key`, `Missing-Key` and
+    // `MISSING_KEY` all resolve to the same line. The right-hand entries below
+    // the generic group are the codes the Host itself throws today.
+    const API_ERROR_KEYS = {
+      missingkey: 'errMissingKey',
+      missingapikey: 'errMissingKey',
+      nokey: 'errMissingKey',
+      noapikey: 'errMissingKey',
+      notconfigured: 'errMissingKey',
+      missingconfig: 'errMissingKey',
+      auth: 'errAuth',
+      unauthorized: 'errAuth',
+      invalidkey: 'errAuth',
+      invalidapikey: 'errAuth',
+      forbidden: 'errAuth',
+      providerauth: 'errAuth',
+      balance: 'errBalance',
+      insufficientbalance: 'errBalance',
+      quota: 'errBalance',
+      quotareached: 'errBalance',
+      paymentrequired: 'errBalance',
+      providerbalance: 'errBalance',
+      ratelimit: 'errRate',
+      ratelimited: 'errRate',
+      toomanyrequests: 'errRate',
+      busy: 'errRate',
+      overloaded: 'errRate',
+      providerratelimit: 'errRate',
+      timeout: 'errTimeout',
+      timedout: 'errTimeout',
+      requesttimeout: 'errTimeout',
+      aborted: 'errTimeout',
+      aborterror: 'errTimeout',
+      providertimeout: 'errTimeout',
+      bodytoolarge: 'errBodyTooLarge',
+      payloadtoolarge: 'errBodyTooLarge',
+      requesttoolarge: 'errBodyTooLarge',
+      invalidreference: 'errInvalidReference',
+      badreference: 'errInvalidReference',
+      invalidimage: 'errInvalidReference',
+      unsupportedimage: 'errInvalidReference',
+      unreadableimage: 'imageUnsupported',
+      missingreference: 'errMissingReference',
+      referencecount: 'errReferenceCount',
+      referencetotalsize: 'errReferenceTotalSize',
+      referencetoolarge: 'errReferenceTooLarge',
+      referenceechoed: 'errReferenceEchoed',
+      imagenotfound: 'errImageNotFound',
+      refnotfound: 'errRefNotFound',
+      invalidimagename: 'errInvalidImageName',
+      invalidrefname: 'errInvalidRefName',
+      invalidjson: 'errInvalidJson',
+      methodnotallowed: 'errMethodNotAllowed',
+      missingprompt: 'needPrompt',
+      noimagereturned: 'errNoImage',
+      outputdirunwritable: 'errOutputDir',
+      revealoutsideoutputdir: 'errRevealOutside',
+      crosssitedenied: 'errCrossSite',
+      settingscorrupt: 'errSettingsCorrupt',
+      prompttoolong: 'errPromptTooLong',
+      openfailed: 'errOpenFailed',
+      dirnotfound: 'errDirNotFound',
+      refoutsidedir: 'errRefOutsideDir',
+      hostunreachable: 'errHostUnreachable',
+      unreachable: 'errHostUnreachable',
+      network: 'errHostUnreachable',
+      networkerror: 'errHostUnreachable',
+      fetchfailed: 'errHostUnreachable',
+      offline: 'errHostUnreachable',
+      badresponse: 'errBadResponse',
+      invalidresponse: 'errBadResponse',
+      nonjson: 'errBadResponse',
+      parseerror: 'errBadResponse',
+      provider: 'errProvider',
+      providererror: 'errProvider',
+      upstream: 'errProvider',
+      upstreamerror: 'errProvider',
+      servererror: 'errProvider',
+      internalerror: 'errProvider',
+    }
+
+    // `http-<status>` is what api() derives when the Host sends no code; only the
+    // meaningful statuses get their own wording (403 stays generic: it is often a
+    // per-image moderation refusal, not a broken key).
+    const HTTP_ERROR_KEYS = {
+      400: 'errUnknown',
+      401: 'errAuth',
+      402: 'errBalance',
+      403: 'errUnknown',
+      404: 'errUnknown',
+      408: 'errTimeout',
+      409: 'errUnknown',
+      413: 'errBodyTooLarge',
+      415: 'errInvalidReference',
+      422: 'errInvalidReference',
+      429: 'errRate',
+      500: 'errProvider',
+      502: 'errProvider',
+      503: 'errProvider',
+      504: 'errProvider',
+    }
+
+    /** Maps one error code to the STR key that explains it. */
+    function apiErrorStringKey(code) {
+      const raw = String(code == null ? '' : code).trim()
+      if (!raw) return 'errUnknown'
+      const http = /^http[-_ ]?(\d{3})$/i.exec(raw)
+      if (http) {
+        const status = Number(http[1])
+        return HTTP_ERROR_KEYS[status] || (status >= 500 ? 'errProvider' : 'errUnknown')
+      }
+      const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '')
+      return API_ERROR_KEYS[key] || 'errUnknown'
+    }
+
+    /**
+     * Turns anything thrown by api() (or by the browser) into
+     * {code, status, detail}: a Host `code` wins, otherwise status first and the
+     * message text second, so native English text never decides the wording.
+     */
+    function normalizeApiError(error) {
+      const source = error && typeof error === 'object' ? error : { message: String(error == null ? '' : error) }
+      const detail = String(source.message || '').trim()
+      const status = Number(source.status || source.statusCode || 0) || 0
+      let code = typeof source.code === 'string' ? source.code.trim() : ''
+      if (!code) {
+        if (source.name === 'AbortError') code = 'timeout'
+        else if (status >= 400) code = `http-${status}`
+        else if (BALANCE_ERROR_RE.test(detail)) code = 'balance'
+        else if (AUTH_ERROR_RE.test(detail)) code = 'auth'
+        else if (MISSING_KEY_ERROR_RE.test(detail)) code = 'missing-key'
+        else if (RATE_LIMIT_ERROR_RE.test(detail)) code = 'rate-limit'
+        else if (TIMEOUT_ERROR_RE.test(detail)) code = 'timeout'
+        else if (NETWORK_ERROR_RE.test(detail)) code = 'host-unreachable'
+        else code = 'unknown'
+      }
+      return { code, status, detail }
+    }
+
+    /**
+     * The one place that renders an error for the user. Known codes get their own
+     * localized line; an unmapped code keeps the generic line plus a truncated
+     * copy of the Host/provider message, so a new code is still debuggable.
+     */
+    function errorText(error, t) {
+      const info = normalizeApiError(error)
+      if (info.code === 'ui-message') return info.detail || t('errUnknown')
+      const key = apiErrorStringKey(info.code)
+      const base = t(key)
+      if (key !== 'errUnknown') return base
+      if (!info.detail || /^HTTP \d{3}$/i.test(info.detail) || info.detail === base) return base
+      const detail = info.detail.length > ERROR_DETAIL_MAX
+        ? `${info.detail.slice(0, ERROR_DETAIL_MAX)}…`
+        : info.detail
+      return `${base} · ${detail}`
+    }
 
     /** Only errors that will fail *every* queued job are fatal: exhausted
      *  balance/quota or a rejected key. A plain 403 is often a per-image content
      *  moderation refusal (or a failed image download), so it must never cancel
      *  the rest of the queue - otherwise one bad job looks like a queue-wide
      *  failure. */
-    function isFatalApiError(message) {
-      const raw = String(message || '')
-      return BALANCE_ERROR_RE.test(raw) || AUTH_ERROR_RE.test(raw)
+    function isFatalApiError(error) {
+      const info = normalizeApiError(error)
+      const key = apiErrorStringKey(info.code)
+      if (key === 'errBalance' || key === 'errAuth') return true
+      return BALANCE_ERROR_RE.test(info.detail) || AUTH_ERROR_RE.test(info.detail)
     }
 
-    /** Turn a raw provider/Host error into an actionable Chinese explanation. */
+    /** Compatibility layer for call sites that still pass a bare message. */
     function friendlyApiError(message, t) {
-      const raw = String(message || '').trim()
-      if (BALANCE_ERROR_RE.test(raw)) return t('errBalance')
-      if (AUTH_ERROR_RE.test(raw)) return t('errAuth')
-      if (/429|rate limit|too many requests|请求过于频繁|限流/i.test(raw)) return t('errRate')
-      if (/timeout|超时|aborted/i.test(raw)) return t('errTimeout')
-      return raw || t('queueError')
+      return errorText(message, t)
+    }
+
+    /** For the two diagnostics panes (connection test / model discovery) the
+     *  localized line alone is not enough: the provider's own message is what
+     *  tells the user which key or model is wrong. Kept out of every notice and
+     *  queue row, where a wall of raw text is just noise. */
+    function errorTextWithDetail(error, t) {
+      const info = normalizeApiError(error)
+      const base = errorText(error, t)
+      if (!info.detail || base.indexOf(info.detail) >= 0) return base
+      const detail = info.detail.length > ERROR_DETAIL_MAX
+        ? `${info.detail.slice(0, ERROR_DETAIL_MAX)}…`
+        : info.detail
+      return `${base} · ${detail}`
+    }
+
+    /** "Click again to confirm" window shared by the library and settings pages.
+     *  A second click inside delayMs runs the action; the pending timer is
+     *  re-armed on every new target and cleared when the page goes away, so no
+     *  timer outlives its component. */
+    function useConfirmWindow(delayMs) {
+      const timerRef = useRef(0)
+      const disarm = useCallback(() => {
+        if (timerRef.current) window.clearTimeout(timerRef.current)
+        timerRef.current = 0
+      }, [])
+      const arm = useCallback(onExpire => {
+        disarm()
+        timerRef.current = window.setTimeout(() => {
+          timerRef.current = 0
+          onExpire()
+        }, delayMs)
+      }, [delayMs, disarm])
+      useEffect(() => disarm, [disarm])
+      return { arm, disarm }
     }
 
     function formatDuration(ms) {
@@ -2069,6 +2502,44 @@ window.__ModuleLoader__.load({
     }
 
     // -------------------------------------------------------------- page
+    /** Rows in the queue card: the newest MAX_JOB_ROWS, except that a running or
+     *  queued job is never dropped (dropping one would hide a job that still
+     *  holds a slot). */
+    function capJobList(list) {
+      if (list.length <= MAX_JOB_ROWS) return list
+      const active = list.filter(job => job.status === 'running' || job.status === 'queued')
+      const room = Math.max(0, MAX_JOB_ROWS - active.length)
+      const finished = list.filter(job => job.status !== 'running' && job.status !== 'queued').slice(0, room)
+      const keep = new Set(active.concat(finished))
+      return list.filter(job => keep.has(job))
+    }
+
+    /** A failed job keeps its request so it can be retried without a re-upload.
+     *  Those requests carry base64 photos, so only the newest
+     *  MAX_RETRY_PAYLOADS failures keep one; older rows stay as plain errors. */
+    function pruneRetryPayloads(list) {
+      let seen = 0
+      let changed = false
+      const next = list.map(job => {
+        if (job.status !== 'error' || !job.payload) return job
+        seen += 1
+        if (seen <= MAX_RETRY_PAYLOADS) return job
+        changed = true
+        return { ...job, payload: undefined }
+      })
+      return changed ? next : list
+    }
+
+    /** Identifies "the same generation request" (prompt + size + the exact
+     *  reference set) so a double click cannot queue the same paid job twice. */
+    function jobSignature(payload) {
+      const references = (payload && payload.references) || []
+      const fingerprint = references
+        .map(item => `${item.name || ''}:${String(item.dataBase64 || '').length}`)
+        .join(',')
+      return `${(payload && payload.prompt) || ''}\u0000${(payload && payload.size) || ''}\u0000${references.length}\u0000${fingerprint}`
+    }
+
     function Page() {
       const lang = useLanguage()
       const t = useCallback(key => (STR[lang] && STR[lang][key]) || (STR.zh[key] || key), [lang])
@@ -2084,12 +2555,14 @@ window.__ModuleLoader__.load({
       const [, setQueueTick] = useState(0)
       const queueRef = useRef([])
       const activeJobsRef = useRef(0)
+      // id -> watchdog timer for a running job.
+      const jobTimersRef = useRef(new Map())
+      // id -> AbortController for a running generation. Only `/generate` gets one:
+      // it is the one call that can hang for minutes.
+      const jobAbortRef = useRef(new Map())
       const [form, setForm] = useState(loadForm)
       const [customPrompt, setCustomPrompt] = useState(null)
-      const [accentId, setAccentId] = useState(() => {
-        const saved = loadJson(LS_ACCENT, { id: 'default' })
-        return saved.id || 'default'
-      })
+      const [accentId, setAccentId] = useState(loadAccentId)
       const [preview, setPreview] = useState(null)
       const [now, setNow] = useState(() => new Date())
       const [testState, setTestState] = useState(null)
@@ -2139,19 +2612,31 @@ window.__ModuleLoader__.load({
         })
       }
 
+      // A full profile or disabled storage must be visible: the form is saved on
+      // every keystroke, so the same failure is only reported once (a second
+      // wording appears only when the reason itself changes).
+      const storageNoticeRef = useRef('')
+      const reportStorageFailure = useCallback(result => {
+        if (!result || result.ok) return
+        const key = storageErrorStringKey(result.error)
+        if (storageNoticeRef.current === key) return
+        storageNoticeRef.current = key
+        setNotice({ kind: 'error', text: t(key) })
+      }, [t])
+
       const persistPoses = useCallback(next => {
         setCustomPoses(next)
-        saveJson(LS_POSES, next)
-      }, [])
+        reportStorageFailure(saveJson(LS_POSES, next))
+      }, [reportStorageFailure])
 
       const refreshHistory = useCallback(async () => {
         try {
           const json = await api('/history?limit=48')
           setHistory({ items: json.items || [], total: json.total || 0, outputDir: json.outputDir || '' })
         } catch (error) {
-          setNotice({ kind: 'error', text: error.message })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
-      }, [])
+      }, [t])
 
       const refreshSettings = useCallback(async () => {
         try {
@@ -2163,9 +2648,9 @@ window.__ModuleLoader__.load({
           // the user knows saves are paused and a .bak recovery is available.
           if (json.warning) setNotice({ kind: 'error', text: String(json.warning) })
         } catch (error) {
-          setNotice({ kind: 'error', text: error.message })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
-      }, [])
+      }, [t])
 
       useEffect(() => {
         refreshSettings()
@@ -2173,8 +2658,8 @@ window.__ModuleLoader__.load({
       }, [refreshSettings, refreshHistory])
 
       useEffect(() => {
-        saveJson(LS_FORM, form)
-      }, [form])
+        reportStorageFailure(saveJson(LS_FORM, form))
+      }, [form, reportStorageFailure])
 
       useEffect(() => {
         const handle = window.setInterval(() => setNow(new Date()), 20000)
@@ -2254,10 +2739,10 @@ window.__ModuleLoader__.load({
           return false
         }
         setFidelityText(value)
-        saveJson(LS_FIDELITY, { text: value })
+        reportStorageFailure(saveJson(LS_FIDELITY, { text: value }))
         setNotice({ kind: 'ok', text: t('saved') })
         return true
-      }, [t])
+      }, [reportStorageFailure, t])
 
       const resetFidelityText = useCallback(() => {
         setFidelityText(FIDELITY_MODULE)
@@ -2313,9 +2798,9 @@ window.__ModuleLoader__.load({
         }
         const next = [template, ...templates]
         setTemplates(next)
-        saveJson(LS_TEMPLATES, next)
+        reportStorageFailure(saveJson(LS_TEMPLATES, next))
         setNotice({ kind: 'ok', text: t('templateSaved') })
-      }, [form, templates, templateSnapshot, t])
+      }, [form, templates, templateSnapshot, reportStorageFailure, t])
 
       const applyTemplate = useCallback(template => {
         if (!template || !template.form) return
@@ -2339,21 +2824,21 @@ window.__ModuleLoader__.load({
           template.id === id ? { ...template, ...patch, updatedAt: Date.now() } : template
         ))
         setTemplates(next)
-        saveJson(LS_TEMPLATES, next)
+        reportStorageFailure(saveJson(LS_TEMPLATES, next))
         setNotice({ kind: 'ok', text: t('templateUpdated') })
-      }, [templates, t])
+      }, [templates, reportStorageFailure, t])
 
       const deleteTemplate = useCallback(id => {
         const next = templates.filter(template => template.id !== id)
         setTemplates(next)
-        saveJson(LS_TEMPLATES, next)
-      }, [templates])
+        reportStorageFailure(saveJson(LS_TEMPLATES, next))
+      }, [templates, reportStorageFailure])
 
       // ------------------------------------------------------ reusable prompts
       const persistReusablePrompts = useCallback(next => {
         setReusablePrompts(next)
-        saveJson(LS_PROMPTS, next)
-      }, [])
+        reportStorageFailure(saveJson(LS_PROMPTS, next))
+      }, [reportStorageFailure])
 
       const saveReusablePrompt = useCallback((kind, name, text) => {
         const cleanText = String(text || '').trim()
@@ -2396,9 +2881,9 @@ window.__ModuleLoader__.load({
         })
         if (!touched) return false
         setTemplates(next)
-        saveJson(LS_TEMPLATES, next)
+        reportStorageFailure(saveJson(LS_TEMPLATES, next))
         return true
-      }, [templates])
+      }, [templates, reportStorageFailure])
 
       const updateReusablePrompt = useCallback((id, patch) => {
         const current = reusablePrompts.find(item => item.id === id)
@@ -2504,20 +2989,20 @@ window.__ModuleLoader__.load({
       const loadReferenceFile = useCallback(async file => {
         if (!file) return null
         if (!/^image\/(png|jpe?g|webp)$/i.test(String(file.type || ''))) {
-          throw new Error('请选择 PNG / JPG / WebP 图片')
+          throw userFacingError(t('pickImageFormat'))
         }
-        if (file.size > 8 * 1024 * 1024) throw new Error('参考图需小于 8MB')
+        if (file.size > 8 * 1024 * 1024) throw userFacingError(t('refImageTooLarge'))
         const optimized = await optimizeReferenceImage(file).catch(() => null)
         const dataUrl = optimized ? optimized.dataUrl : await readBlobAsDataUrl(file)
         const match = /^data:(image\/(?:png|jpeg|webp));base64,(.*)$/i.exec(dataUrl)
-        if (!match) throw new Error('不支持的图片格式')
+        if (!match) throw userFacingError(t('imageUnsupported'))
         return {
           dataBase64: match[2],
           mediaType: optimized ? optimized.mediaType : match[1],
           name: file.name,
           preview: dataUrl,
         }
-      }, [])
+      }, [t])
 
       const saveCustomPose = useCallback(pose => {
         const exists = customPoses.some(item => item.id === pose.id)
@@ -2552,17 +3037,17 @@ window.__ModuleLoader__.load({
               body: JSON.stringify({ references: payload, clear: payload.length === 0 }),
             })
           } catch (error) {
-            setNotice({ kind: 'error', text: `商品图本次可用，但未能持久保存：${error.message}` })
+            setNotice({ kind: 'error', text: `${t('refPersistFailed')} ${errorText(error, t)}` })
           }
         })
         return persistQueueRef.current
-      }, [])
+      }, [t])
 
       const handleProductFiles = useCallback(async files => {
         const list = Array.from(files || [])
         if (list.length === 0) return
         if (addingFilesRef.current) {
-          setNotice({ kind: 'error', text: '正在处理上一批图片，请稍候再选' })
+          setNotice({ kind: 'error', text: t('productAddBusy') })
           return
         }
         addingFilesRef.current = true
@@ -2578,11 +3063,11 @@ window.__ModuleLoader__.load({
             fresh.push(item)
           }
           if (fresh.length === 0) {
-            setNotice({ kind: 'ok', text: '这些图片已在商品参考图里' })
+            setNotice({ kind: 'ok', text: t('productAlreadyAdded') })
             return
           }
           if (current.length + fresh.length > 4) {
-            setNotice({ kind: 'error', text: '商品参考图最多 4 张，本次未添加，请减少选择数量' })
+            setNotice({ kind: 'error', text: t('productRefsLimit') })
             return
           }
           const next = [...current, ...fresh]
@@ -2592,15 +3077,15 @@ window.__ModuleLoader__.load({
           photoChangedAtRef.current = Date.now()
           autoExtractSchedulerRef.current.schedule()
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         } finally {
           addingFilesRef.current = false
         }
-      }, [loadReferenceFile, persistProductRefs])
+      }, [loadReferenceFile, persistProductRefs, t])
 
       const handleRemoveProduct = useCallback(index => {
         if (addingFilesRef.current) {
-          setNotice({ kind: 'error', text: '正在处理上一批图片，请稍候再操作' })
+          setNotice({ kind: 'error', text: t('productRemoveBusy') })
           return
         }
         const current = productRefsRef.current || []
@@ -2611,7 +3096,7 @@ window.__ModuleLoader__.load({
         photoChangedAtRef.current = Date.now()
         if (next.length > 0) autoExtractSchedulerRef.current.schedule()
         else autoExtractSchedulerRef.current.cancel()
-      }, [persistProductRefs])
+      }, [persistProductRefs, t])
 
       const handleDescriptionChange = useCallback(value => {
         descTouchedAtRef.current = Date.now()
@@ -2648,11 +3133,11 @@ window.__ModuleLoader__.load({
             }),
           })
           const text = String(json.text || '').trim()
-          if (!text) throw new Error(t('extractEmpty'))
+          if (!text) throw userFacingError(t('extractEmpty'))
           // The photo set changed (or was cleared) while the model was running:
           // the answer describes images that are no longer attached.
           if (productMutationVersionRef.current !== extractionVersion || (productRefsRef.current || []).length === 0) {
-            setNotice({ kind: 'error', text: '图片已变化，本次识别结果已丢弃，请重新提取' })
+            setNotice({ kind: 'error', text: t('extractStale') })
             return
           }
           // Automatic extraction must not overwrite text typed during the call.
@@ -2664,7 +3149,7 @@ window.__ModuleLoader__.load({
           extractedVersionRef.current = Math.max(extractedVersionRef.current, extractionVersion)
           setNotice({ kind: 'ok', text: t('extractDone') })
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         } finally {
           setExtracting(false)
         }
@@ -2682,21 +3167,85 @@ window.__ModuleLoader__.load({
 
       useEffect(() => () => {
         if (autoExtractSchedulerRef.current) autoExtractSchedulerRef.current.cancel()
+        // A pending watchdog must not fire after the page is gone.
+        for (const timer of jobTimersRef.current.values()) window.clearTimeout(timer)
+        jobTimersRef.current.clear()
+        // …and a generation still in flight must not keep the socket open.
+        for (const controller of jobAbortRef.current.values()) {
+          try {
+            controller.abort()
+          } catch {
+            // already settled
+          }
+        }
+        jobAbortRef.current.clear()
       }, [])
 
       const updateJob = (id, patch) => {
-        setJobs(prev => prev.map(job => (job.id === id ? { ...job, ...patch } : job)))
+        setJobs(prev => capJobList(pruneRetryPayloads(prev.map(job => (job.id === id ? { ...job, ...patch } : job)))))
+      }
+
+      function clearJobWatchdog(id) {
+        const timer = jobTimersRef.current.get(id)
+        if (timer === undefined) return
+        window.clearTimeout(timer)
+        jobTimersRef.current.delete(id)
+      }
+
+      /** Cancels the HTTP request behind one job (idempotent: the entry is gone
+       *  once it fired, and an already-settled controller ignores abort()). */
+      function abortJobRequest(id) {
+        const controller = jobAbortRef.current.get(id)
+        if (!controller) return false
+        jobAbortRef.current.delete(id)
+        try {
+          controller.abort()
+        } catch {
+          // already settled
+        }
+        return true
       }
 
       async function runJob(job) {
         activeJobsRef.current += 1
         updateJob(job.id, { status: 'running', startedAt: Date.now() })
+        // Only the generation call carries an AbortController: it is the one
+        // request that can hang for minutes, and the Host answers it with a
+        // single JSON body (no stream), so cancelling it only ends that call.
+        const controller = typeof AbortController === 'function' ? new AbortController() : null
+        if (controller) jobAbortRef.current.set(job.id, controller)
+        // A lost response would otherwise hold the slot forever. The watchdog
+        // cancels the request and closes the row itself; `state.timedOut` keeps
+        // the resulting rejection (and any late answer) from touching that row.
+        const state = { timedOut: false }
+        jobTimersRef.current.set(job.id, window.setTimeout(() => {
+          jobTimersRef.current.delete(job.id)
+          // Order matters: the flag goes up before abort() so the rejection the
+          // abort causes is recognised as "already timed out", then the request
+          // is cancelled, then the row/slot are settled as before.
+          state.timedOut = true
+          abortJobRequest(job.id)
+          activeJobsRef.current = Math.max(0, activeJobsRef.current - 1)
+          updateJob(job.id, {
+            status: 'error',
+            finishedAt: Date.now(),
+            error: t('errTimeout'),
+            // Tooltip detail stays in the current language: the row already says
+            // which limit was hit, so no English diagnostic leaks into the UI.
+            errorRaw: `${t('errTimeout')} · ${Math.round(JOB_WATCHDOG_MS / 1000)}s`,
+            errorCode: 'timeout',
+          })
+          setNotice({ kind: 'error', text: t('errTimeout') })
+          startQueuedJobs()
+        }, JOB_WATCHDOG_MS))
         try {
           const json = await api('/generate', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(job.payload),
+            signal: controller ? controller.signal : undefined,
           })
+          if (state.timedOut) return
           const created = (json.items || []).map(item => ({ ...item, prompt: job.payload.prompt }))
           if (created.length > 0) {
             setResults(prev => [...created, ...prev].slice(0, 24))
@@ -2723,15 +3272,20 @@ window.__ModuleLoader__.load({
             payload: undefined,
           })
         } catch (error) {
-          const raw = String(error && error.message ? error.message : error)
-          const message = friendlyApiError(raw, t)
-          const fatal = isFatalApiError(raw)
+          if (state.timedOut) return
+          const info = normalizeApiError(error)
+          const message = errorText(error, t)
+          const raw = info.detail || message
+          const fatal = isFatalApiError(error)
+          // The payload is kept so this row can offer "retry" without asking the
+          // user to upload the photos again; pruneRetryPayloads keeps only the
+          // newest MAX_RETRY_PAYLOADS failures holding one.
           updateJob(job.id, {
             status: 'error',
             finishedAt: Date.now(),
             error: message,
             errorRaw: raw,
-            payload: undefined,
+            errorCode: info.code,
           })
           // A balance/auth failure would fail every remaining job too: cancel the
           // rest of the queue and explain it once instead of spamming identical errors.
@@ -2742,20 +3296,24 @@ window.__ModuleLoader__.load({
               finishedAt: Date.now(),
               error: message,
               errorRaw: raw,
-              payload: undefined,
+              errorCode: info.code,
             }))
             setNotice({ kind: 'error', text: t('queueStopped') })
-          } else if (fatal) {
-            // Nothing was actually cancelled; keep the real error visible.
-            setNotice({ kind: 'error', text: message })
           } else {
-            // Non-fatal failures (moderation, bad size, one-off provider error)
-            // otherwise live only inside a job row that can scroll out of view.
+            // A single failure (moderation, bad size, one-off provider error)
+            // otherwise lives only inside a job row that can scroll out of view.
             setNotice({ kind: 'error', text: message })
           }
         } finally {
-          activeJobsRef.current = Math.max(0, activeJobsRef.current - 1)
-          startQueuedJobs()
+          clearJobWatchdog(job.id)
+          // The request is over either way (done, failed, or aborted above).
+          jobAbortRef.current.delete(job.id)
+          // The watchdog already released the slot; releasing it twice would let
+          // more than MAX_CONCURRENT_JOBS run at once.
+          if (!state.timedOut) {
+            activeJobsRef.current = Math.max(0, activeJobsRef.current - 1)
+            startQueuedJobs()
+          }
         }
       }
 
@@ -2779,7 +3337,7 @@ window.__ModuleLoader__.load({
         }
         // The queue refs are the authority; the jobs state can lag a fast click.
         const pendingCount = activeJobsRef.current + queueRef.current.length
-        if (pendingCount >= 12) {
+        if (pendingCount >= MAX_PENDING_JOBS) {
           setNotice({ kind: 'error', text: t('queueFull') })
           return
         }
@@ -2790,6 +3348,20 @@ window.__ModuleLoader__.load({
         // resolution chips; there is no stored default size any more.
         const outputSpec = resolveOutputSpec(form)
         const size = outputSpec.size || '2048x2048'
+        const payload = {
+          prompt: text,
+          size,
+          references,
+          profileId: settings ? settings.activeId : undefined,
+          model: settings && settings.model ? settings.model : undefined,
+        }
+        // A second click while the identical job is still queued or running must
+        // not spend another paid generation.
+        const signature = jobSignature(payload)
+        if (jobs.some(job => (job.status === 'queued' || job.status === 'running') && job.signature === signature)) {
+          setNotice({ kind: 'error', text: t('queueDuplicate') })
+          return
+        }
         const job = {
           id: `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
           status: 'queued',
@@ -2797,16 +3369,42 @@ window.__ModuleLoader__.load({
           prompt: text,
           ratioLabel: `${optionLabel(outputSpec.ratio, lang)} · ${optionLabel(outputSpec.resolution, lang)}`,
           referenceCount: references.length,
-          payload: {
-            prompt: text,
-            size,
-            references,
-            profileId: settings ? settings.activeId : undefined,
-            model: settings && settings.model ? settings.model : undefined,
-          },
+          signature,
+          payload,
         }
-        setJobs(prev => [job, ...prev].slice(0, 24))
+        setJobs(prev => capJobList([job, ...prev]))
         queueRef.current.push(job)
+        setNotice({ kind: 'ok', text: t('queueAdded') })
+        startQueuedJobs()
+      }
+
+      // Re-runs a failed job from the request it kept, as a new row: the failed
+      // row stays visible (and stays retryable until its payload is pruned).
+      function handleRetryJob(id) {
+        const source = jobs.find(job => job.id === id)
+        if (!source || !source.payload) return
+        if (activeJobsRef.current + queueRef.current.length >= MAX_PENDING_JOBS) {
+          setNotice({ kind: 'error', text: t('queueFull') })
+          return
+        }
+        // Belt and braces: if that attempt is somehow still in flight (a watchdog
+        // row whose abort never landed), cancel it before spending a new call.
+        abortJobRequest(id)
+        const retry = {
+          ...source,
+          id: `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          status: 'queued',
+          createdAt: Date.now(),
+          startedAt: undefined,
+          finishedAt: undefined,
+          items: undefined,
+          timings: undefined,
+          error: undefined,
+          errorRaw: undefined,
+          errorCode: undefined,
+        }
+        setJobs(prev => capJobList([retry, ...prev]))
+        queueRef.current.push(retry)
         setNotice({ kind: 'ok', text: t('queueAdded') })
         startQueuedJobs()
       }
@@ -2840,7 +3438,7 @@ window.__ModuleLoader__.load({
             document.execCommand('copy')
             setNotice({ kind: 'ok', text: t('copied') })
           } catch {
-            setNotice({ kind: 'error', text: 'copy failed' })
+            setNotice({ kind: 'error', text: t('copyFailed') })
           }
           document.body.removeChild(area)
         }
@@ -2848,9 +3446,9 @@ window.__ModuleLoader__.load({
 
       const handleAccent = useCallback(id => {
         setAccentId(id)
-        saveJson(LS_ACCENT, { id })
+        reportStorageFailure(saveJson(LS_ACCENT, { id }))
         if (appCtx) applyAccent(appCtx, id)
-      }, [])
+      }, [reportStorageFailure])
 
       const handleSaveSettings = useCallback(async payload => {
         if (!draft || saving) return
@@ -2885,7 +3483,7 @@ window.__ModuleLoader__.load({
           setNotice({ kind: 'ok', text: t('saved') })
           refreshHistory()
         } catch (error) {
-          setNotice({ kind: 'error', text: error.message })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         } finally {
           setSaving(false)
         }
@@ -2907,9 +3505,9 @@ window.__ModuleLoader__.load({
             setDraft(prev => (prev ? { ...prev, activeId: json.settings.activeId } : prev))
           }
           const name = json.settings && json.settings.name ? json.settings.name : ''
-          setNotice({ kind: 'ok', text: name ? `${t('activeNow')}：${name}` : t('saved') })
+          setNotice({ kind: 'ok', text: name ? `${t('activeNow')} · ${name}` : t('saved') })
         } catch (error) {
-          setNotice({ kind: 'error', text: error.message })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
       }, [t])
 
@@ -2928,7 +3526,7 @@ window.__ModuleLoader__.load({
           setDraft(prev => (prev ? { ...prev, vision: { ...(prev.vision || {}), activeId: savedActive } } : prev))
           setNotice({ kind: 'ok', text: t('saved') })
         } catch (error) {
-          setNotice({ kind: 'error', text: error.message })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
       }, [t])
 
@@ -2943,35 +3541,35 @@ window.__ModuleLoader__.load({
           })
           setTestState({ state: json.ok ? 'ok' : 'fail', message: json.message || json.error || '', profileId })
         } catch (error) {
-          setTestState({ state: 'fail', message: error.message, profileId })
+          setTestState({ state: 'fail', message: errorTextWithDetail(error, t), profileId })
         }
-      }, [])
+      }, [t])
 
       const openPanel = useCallback(key => {
         try {
           if (key === 'conversation') appCtx.layout.selectPanel(null)
           else appCtx.layout.selectPanel(key)
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
-      }, [])
+      }, [t])
 
       const startSession = useCallback(() => {
         try {
           appCtx.uiWorkspace.startSession()
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
-      }, [])
+      }, [t])
 
       const handleReveal = useCallback(async () => {
         try {
           const json = await api('/reveal', { method: 'POST' })
-          if (!json.ok) setNotice({ kind: 'error', text: '无法打开目录' })
+          if (!json || !json.ok) setNotice({ kind: 'error', text: t('revealFailed') })
         } catch (error) {
-          setNotice({ kind: 'error', text: error.message })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
-      }, [])
+      }, [t])
 
       const tabButton = (id, label) => {
         const active = tab === id
@@ -3090,7 +3688,7 @@ window.__ModuleLoader__.load({
             onCopy: handleCopy,
             onGenerate: handleEnqueue,
             results, history, lastTiming,
-            jobs, onClearFinishedJobs: handleClearFinishedJobs,
+            jobs, onClearFinishedJobs: handleClearFinishedJobs, onRetryJob: handleRetryJob,
             onPreview: setPreview,
             onOpenStudioHistory: refreshHistory,
             onRevealOutput: handleReveal,
@@ -3387,18 +3985,16 @@ window.__ModuleLoader__.load({
     function SizeChartTab(props) {
       const { lang, t } = props
       const [chart, setChart] = useState(() => {
-        const saved = loadJson(LS_SIZEPOSTER, null)
-        if (saved && Array.isArray(saved.columns) && saved.columns.length && Array.isArray(saved.rows) && saved.rows.length) {
-          return { columns: saved.columns, rows: saved.rows }
-        }
+        const saved = loadSizePoster()
+        if (saved) return { columns: saved.columns, rows: saved.rows }
         return {
           columns: DEFAULT_SIZE_CHART.columns.map(column => ({ ...column })),
           rows: DEFAULT_SIZE_CHART.rows.map(row => ({ ...row, values: { ...row.values } })),
         }
       })
       const [weightUnit, setWeightUnit] = useState(() => {
-        const saved = loadJson(LS_SIZEPOSTER, null)
-        return saved && saved.weightUnit === 'jin' ? 'jin' : 'kg'
+        const saved = loadSizePoster()
+        return saved ? saved.weightUnit : 'kg'
       })
       const [chartImage, setChartImage] = useState(null)
       const [extracting, setExtracting] = useState(false)
@@ -3439,8 +4035,19 @@ window.__ModuleLoader__.load({
         }
       })
 
+      // The size chart is edited cell by cell (a save per keystroke), so a full
+      // profile is reported once instead of on every character.
+      const sizeStorageNoticeRef = useRef('')
+      const reportSizeStorageFailure = result => {
+        if (!result || result.ok) return
+        const key = storageErrorStringKey(result.error)
+        if (sizeStorageNoticeRef.current === key) return
+        sizeStorageNoticeRef.current = key
+        setNotice({ kind: 'error', text: t(key) })
+      }
+
       useEffect(() => {
-        saveJson(LS_SIZEPOSTER, { columns: chart.columns, rows: chart.rows, weightUnit })
+        reportSizeStorageFailure(saveJson(LS_SIZEPOSTER, { columns: chart.columns, rows: chart.rows, weightUnit }))
       }, [chart, weightUnit])
 
       // Restore the persisted brand logo (kept until the user replaces it).
@@ -3654,11 +4261,11 @@ window.__ModuleLoader__.load({
       const handleChartImage = async file => {
         if (!file) return
         if (!/^image\/(png|jpe?g|webp)$/i.test(String(file.type || ''))) {
-          setNotice({ kind: 'error', text: '请选择 PNG / JPG / WebP 图片' })
+          setNotice({ kind: 'error', text: t('pickImageFormat') })
           return
         }
         if (file.size > 8 * 1024 * 1024) {
-          setNotice({ kind: 'error', text: '尺码表图片需小于 8MB' })
+          setNotice({ kind: 'error', text: t('sizeChartTooLarge') })
           return
         }
         try {
@@ -3666,7 +4273,7 @@ window.__ModuleLoader__.load({
           setChartImage({ dataUrl, name: file.name })
           setNotice(null)
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
       }
 
@@ -3680,7 +4287,7 @@ window.__ModuleLoader__.load({
         setNotice(null)
         try {
           const match = /^data:([^;]+);base64,(.*)$/.exec(chartImage.dataUrl)
-          if (!match) throw new Error('图片格式无法识别')
+          if (!match) throw userFacingError(t('sizeChartUnreadable'))
           const json = await api('/extract-size', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -3689,7 +4296,7 @@ window.__ModuleLoader__.load({
             }),
           })
           if (!json.columns || !json.rows || json.columns.length === 0 || json.rows.length === 0) {
-            throw new Error('未能识别出尺码表，请换一张更清晰的截图')
+            throw userFacingError(t('sizeChartNoTable'))
           }
           const columns = json.columns.map((column, index) => ({
             key: column.key || `c${index}`,
@@ -3706,7 +4313,7 @@ window.__ModuleLoader__.load({
           setChart({ columns, rows })
           setNotice({ kind: 'ok', text: `${t('sizeExtractDone')} · ${rows.length} ${t('sizeSizeHeader')}` })
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         } finally {
           setExtracting(false)
         }
@@ -3715,17 +4322,17 @@ window.__ModuleLoader__.load({
       const handleLogoFile = async file => {
         if (!file) return
         if (!/^image\/(png|jpe?g|webp)$/i.test(String(file.type || ''))) {
-          setNotice({ kind: 'error', text: '请选择 PNG / JPG / WebP 图片' })
+          setNotice({ kind: 'error', text: t('pickImageFormat') })
           return
         }
         if (file.size > 5 * 1024 * 1024) {
-          setNotice({ kind: 'error', text: 'Logo 需小于 5MB' })
+          setNotice({ kind: 'error', text: t('logoTooLarge') })
           return
         }
         try {
           const dataUrl = await readBlobAsDataUrl(file)
           const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
-          if (!match) throw new Error('不支持的图片格式')
+          if (!match) throw userFacingError(t('imageUnsupported'))
           setLogo({ dataUrl, name: file.name })
           try {
             await api('/ref/logo', {
@@ -3734,10 +4341,10 @@ window.__ModuleLoader__.load({
               body: JSON.stringify({ dataBase64: match[2], mediaType: match[1], name: file.name }),
             })
           } catch (error) {
-            setNotice({ kind: 'error', text: `Logo 本次可用，但未能持久保存：${error.message}` })
+            setNotice({ kind: 'error', text: `${t('logoPersistFailed')} ${errorText(error, t)}` })
           }
         } catch (error) {
-          setNotice({ kind: 'error', text: String(error && error.message ? error.message : error) })
+          setNotice({ kind: 'error', text: errorText(error, t) })
         }
       }
 
@@ -4074,7 +4681,7 @@ window.__ModuleLoader__.load({
       const {
         lang, t, form, update, promptValue, setCustomPrompt,
         onCopy, onGenerate, results, history, lastTiming, onPreview, needKey, onOpenSettings,
-        jobs, onClearFinishedJobs,
+        jobs, onClearFinishedJobs, onRetryJob,
         onRevealOutput,
         productRefs,
         onProductFiles, onRemoveProduct,
@@ -4601,6 +5208,20 @@ window.__ModuleLoader__.load({
               ? h('div', { title: job.errorRaw || job.error, style: { fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', marginTop: 2, lineHeight: 1.4 } }, job.error)
               : null,
           ),
+          // A failed row keeps its request (base64 photos included) so retrying
+          // never asks for another upload; older failures lose the payload and
+          // simply show no button.
+          job.status === 'error' && job.payload && typeof onRetryJob === 'function'
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => onRetryJob(job.id),
+                  style: textButton({ fontSize: 11.5, flex: 'none', padding: '4px 6px' }),
+                },
+                t('queueRetry'),
+              )
+            : null,
         )
 
       const queueCard = jobList.length === 0 ? null : h(
@@ -4753,6 +5374,7 @@ window.__ModuleLoader__.load({
       const editor = draft || null
       const [confirmId, setConfirmId] = useState(null)
       const [warning, setWarning] = useState('')
+      const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
 
       const kinds = [
         { id: 'style', labelKey: 'promptKindStyle' },
@@ -4815,11 +5437,10 @@ window.__ModuleLoader__.load({
       const remove = prompt => {
         if (confirmId !== prompt.id) {
           setConfirmId(prompt.id)
-          window.setTimeout(() => {
-            setConfirmId(current => (current === prompt.id ? null : current))
-          }, 4000)
+          confirmWindow.arm(() => setConfirmId(current => (current === prompt.id ? null : current)))
           return
         }
+        confirmWindow.disarm()
         setConfirmId(null)
         onDelete(prompt.id)
         if (editor && editor.id === prompt.id) setDraft(null)
@@ -5051,6 +5672,7 @@ window.__ModuleLoader__.load({
       const { lang, t, templates, prompts, onBack, onApply, onUpdate, onDelete, onOpenPromptLibrary, onAdoptPrompt } = props
       const [editor, setEditor] = useState(null)
       const [confirmId, setConfirmId] = useState(null)
+      const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
 
       const startEdit = template => {
         setConfirmId(null)
@@ -5096,11 +5718,10 @@ window.__ModuleLoader__.load({
       const remove = template => {
         if (confirmId !== template.id) {
           setConfirmId(template.id)
-          window.setTimeout(() => {
-            setConfirmId(current => (current === template.id ? null : current))
-          }, 4000)
+          confirmWindow.arm(() => setConfirmId(current => (current === template.id ? null : current)))
           return
         }
+        confirmWindow.disarm()
         setConfirmId(null)
         onDelete(template.id)
         if (editor && editor.id === template.id) setEditor(null)
@@ -5279,6 +5900,7 @@ window.__ModuleLoader__.load({
       const [editor, setEditor] = useState({ id: null, name: '', prompt: '' })
       const [flash, setFlash] = useState('')
       const [confirmId, setConfirmId] = useState(null)
+      const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
 
       const isEditing = Boolean(editor.id)
       const canSave = Boolean(editor.name.trim() && editor.prompt.trim())
@@ -5312,11 +5934,10 @@ window.__ModuleLoader__.load({
       const remove = item => {
         if (confirmId !== item.id) {
           setConfirmId(item.id)
-          window.setTimeout(() => {
-            setConfirmId(current => (current === item.id ? null : current))
-          }, 4000)
+          confirmWindow.arm(() => setConfirmId(current => (current === item.id ? null : current)))
           return
         }
+        confirmWindow.disarm()
         setConfirmId(null)
         onDeletePose(item.id)
         if (editor.id === item.id) reset()
@@ -5496,6 +6117,7 @@ window.__ModuleLoader__.load({
       const [fidelityEditing, setFidelityEditing] = useState(false)
       const [fidelityDraft, setFidelityDraft] = useState('')
       const [confirmDelete, setConfirmDelete] = useState(null)
+      const confirmWindow = useConfirmWindow(CONFIRM_DELETE_MS)
       const profiles = draft ? draft.profiles : []
       const active = draft ? profiles.find(profile => profile.id === draft.activeId) || profiles[0] || null : null
       const fidelityEdited = typeof fidelityText === 'string' && fidelityText !== fidelityDefault
@@ -5514,11 +6136,12 @@ window.__ModuleLoader__.load({
       /** First click arms a destructive action, second click within 4 s runs it. */
       const armDelete = which => {
         if (confirmDelete === which) {
+          confirmWindow.disarm()
           setConfirmDelete(null)
           return true
         }
         setConfirmDelete(which)
-        window.setTimeout(() => setConfirmDelete(current => (current === which ? null : current)), 4000)
+        confirmWindow.arm(() => setConfirmDelete(current => (current === which ? null : current)))
         return false
       }
 
@@ -5611,7 +6234,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (visionRequestRef.current !== requestId || visionIdRef.current !== targetId) return
           setVisionModels(null)
-          setVisionModelState({ state: 'fail', message: String(error && error.message ? error.message : error) })
+          setVisionModelState({ state: 'fail', message: errorTextWithDetail(error, t) })
         }
       }, [activeVisionProfile, t])
 
@@ -5702,7 +6325,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (modelRequestRef.current !== requestId || activeIdRef.current !== targetId) return
           setModels(null)
-          setModelState({ state: 'fail', message: String(error && error.message ? error.message : error) })
+          setModelState({ state: 'fail', message: errorTextWithDetail(error, t) })
         }
       }, [active, setDraft, t])
 
@@ -6486,8 +7109,9 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         appCtx = ctx
         try {
-          const saved = loadJson(LS_ACCENT, { id: 'default' })
-          applyAccent(ctx, saved.id || 'default')
+          // The saved accent is validated (a hand-edited id cannot leave the
+          // palette without a highlight): loadAccentId() falls back to default.
+          applyAccent(ctx, loadAccentId())
         } catch {
           // accent is a preference; never let it block the page
         }
