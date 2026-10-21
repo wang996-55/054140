@@ -1,0 +1,3 @@
+- insert:
+    - id: ai-replica
+      name: '@local/ai-replica'

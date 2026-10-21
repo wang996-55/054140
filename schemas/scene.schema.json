@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-replica/schemas/scene.schema.json",
+  "title": "SceneAnalysis",
+  "description": "Electron 中转站视觉分析输出的场景 JSON（V4.1 §4.2）。分析与人工审核分开保存：scene_analysis.json 是模型原始结论，scene_review.json 是人工审核后的最终结论。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reference_type", "camera", "lighting", "support_surface", "placement", "scene_description", "color_palette", "style_tags"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "reference_type": {
+      "type": "string",
+      "enum": ["ecommerce", "apparel", "marketing_poster", "social_post", "creative_poster", "other"]
+    },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["angle", "expected_product_view"],
+      "properties": {
+        "angle": { "type": "string", "enum": ["eye_level", "top_down", "three_quarter", "low_angle", "unknown"] },
+        "expected_product_view": { "type": "string", "enum": ["front", "side", "back", "top", "angle_45", "unknown"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "lighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direction", "softness", "temperature"],
+      "properties": {
+        "direction": { "type": "string", "enum": ["top_left", "top_right", "left", "right", "top", "front", "back", "diffuse", "mixed", "unknown"] },
+        "softness": { "type": "string", "enum": ["hard", "soft", "diffuse", "unknown"] },
+        "temperature": { "type": "string", "enum": ["warm", "neutral", "cool", "unknown"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "support_surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orientation"],
+      "properties": {
+        "type": { "type": "string", "enum": ["tabletop", "floor", "podium", "shelf", "wall", "suspended", "none", "unknown"] },
+        "orientation": { "type": "string", "enum": ["horizontal", "vertical", "unknown"] },
+        "contact_point_hint": { "type": "string", "enum": ["bottom_center", "bottom_left", "bottom_right", "center", "unknown"] }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preferred_region", "clearance", "needs_user_confirmation"],
+      "properties": {
+        "preferred_region": { "type": "string", "enum": ["center", "left", "right", "top", "bottom", "full_bleed", "unknown"] },
+        "clearance": { "type": "string", "enum": ["clear", "partial", "blocked", "unknown"] },
+        "needs_user_confirmation": { "type": "boolean" }
+      }
+    },
+    "scene_description": { "type": "string", "maxLength": 600 },
+    "color_palette": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "maxLength": 40 },
+          "hex": { "type": "string", "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" }
+        }
+      }
+    },
+    "style_tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 40 } },
+    "reference_texts": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 200 } },
+    "risks": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 200 } }
+  }
+}

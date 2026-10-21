@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.ai-replica/schemas/composition.schema.json",
+  "title": "Composition",
+  "description": "Canvas 合成参数（V4.1 §4.5）。几何唯一权威是 Host 的 lib/compositor.js#planComposition：pw = width_ratio × canvas.width，ph 由商品图宽高比推出，cx/cy 为归一化中心点，阴影 offset/blur 是短边 S 的百分比。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "canvas", "background", "product", "shadow", "adjustments", "text_layers", "meta"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "preset"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 256, "maximum": 4096 },
+        "height": { "type": "integer", "minimum": 256, "maximum": 4096 },
+        "preset": { "type": "string" }
+      }
+    },
+    "background": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "sha256"],
+      "properties": {
+        "asset_id": { "type": "string", "maxLength": 80 },
+        "sha256": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "mask_id", "sha256", "cx", "cy", "width_ratio", "rotation_deg", "opacity", "visible"],
+      "properties": {
+        "asset_id": { "type": "string", "maxLength": 80 },
+        "mask_id": { "type": "string", "maxLength": 80 },
+        "sha256": { "type": "string", "maxLength": 64 },
+        "cx": { "type": "number", "minimum": -0.5, "maximum": 1.5 },
+        "cy": { "type": "number", "minimum": -0.5, "maximum": 1.5 },
+        "width_ratio": { "type": "number", "minimum": 0.04, "maximum": 1 },
+        "rotation_deg": { "type": "number", "minimum": -180, "maximum": 180 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "visible": { "type": "boolean" },
+        "source_width": { "type": "integer", "minimum": 1 },
+        "source_height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "shadow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "offset_x", "offset_y", "blur", "opacity", "color", "contact"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "offset_x": { "type": "number", "minimum": -20, "maximum": 20, "description": "短边 S 的百分比" },
+        "offset_y": { "type": "number", "minimum": -20, "maximum": 20, "description": "短边 S 的百分比" },
+        "blur": { "type": "number", "minimum": 0, "maximum": 20, "description": "短边 S 的百分比" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "color": { "type": "string", "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+        "contact": { "type": "boolean" }
+      }
+    },
+    "adjustments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "brightness", "warmth"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "brightness": { "type": "number", "minimum": -1, "maximum": 1 },
+        "warmth": { "type": "number", "minimum": -1, "maximum": 1 }
+      }
+    },
+    "text_layers": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "font_family", "font_size", "line_height", "color", "align", "x", "y", "width", "placement", "visible"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_-]{1,32}$" },
+          "text": { "type": "string", "maxLength": 400 },
+          "font_family": { "type": "string", "enum": ["sans", "serif"] },
+          "font_size": { "type": "number", "minimum": 0.01, "maximum": 0.3, "description": "短边 S 的比例" },
+          "line_height": { "type": "number", "minimum": 0.8, "maximum": 2.4 },
+          "color": { "type": "string", "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+          "align": { "type": "string", "enum": ["left", "center", "right"] },
+          "x": { "type": "number", "minimum": -0.2, "maximum": 1.2 },
+          "y": { "type": "number", "minimum": -0.2, "maximum": 1.2 },
+          "width": { "type": "number", "minimum": 0.05, "maximum": 1 },
+          "placement": { "type": "string", "enum": ["front", "behind"] },
+          "visible": { "type": "boolean" },
+          "weight": { "type": "string", "enum": ["medium", "bold"] },
+          "shadow": { "type": "boolean" }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created_at", "updated_at", "params_version"],
+      "properties": {
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "params_version": { "type": "string", "const": "1.0" }
+      }
+    }
+  }
+}
