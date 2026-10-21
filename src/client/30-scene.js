@@ -41,7 +41,7 @@
         setBusy(true)
         setError('')
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/analyze`, { method: 'POST', body: {} })
+          const data = await taskApi(snapshot.task.id, 'analyze', { method: 'POST', body: {} })
           props.onChanged(data)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
@@ -60,7 +60,7 @@
             const value = path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), scene)
             if (value === 'unknown' || value === undefined) confirmed[path] = ack[path] === true
           }
-          const data = await api(`/tasks/${snapshot.task.id}/scene-review`, {
+          const data = await taskApi(snapshot.task.id, 'scene-review', {
             method: 'PUT',
             body: { scene, confirmed },
           })

@@ -374,7 +374,7 @@
             maskImage.data[index * 4 + 3] = state.alpha[index]
           }
           mctx.putImageData(maskImage, 0, 0)
-          await api(`/tasks/${snapshot.task.id}/cutout`, {
+          await taskApi(snapshot.task.id, 'cutout', {
             method: 'POST',
             body: {
               mode: mode === 'transparent' ? 'transparent' : 'auto',
@@ -382,7 +382,7 @@
               mask_png: canvasToPngDataUrl(maskCanvas),
             },
           })
-          const data = await api(`/tasks/${snapshot.task.id}/mask`, { method: 'PUT', body: { confirm: true } })
+          const data = await taskApi(snapshot.task.id, 'mask', { method: 'PUT', body: { confirm: true } })
           props.onChanged(data)
           props.notify('ok', t('maskSaved'))
         } catch (failure) {

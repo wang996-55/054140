@@ -131,7 +131,12 @@ function configureRequestTrust(ctx) {
   }
 }
 
-const TASK_PREFIX = `${PREFIX}/tasks/`
+const TASK_ACTIONS = ['analyze', 'scene-review', 'cutout', 'mask', 'compatibility', 'background', 'composition', 'export', 'accept', 'cancel']
+
+function taskIdOf(req) {
+  const url = new URL(req.url, 'http://127.0.0.1')
+  return String(url.searchParams.get('id') || '')
+}
 
 function wrap(handler) {
   return (req, res) => {
@@ -164,25 +169,27 @@ export function apply(ctx) {
     configureRequestTrust(ctx)
     const handlers = createHandlers()
 
-    const taskRoute = (req, res) => {
-      const url = new URL(req.url, 'http://127.0.0.1')
-      const rest = url.pathname.slice(TASK_PREFIX.length)
-      const parts = rest.split('/').filter(Boolean)
-      if (parts.length === 0) return handlers.tasks(req, res)
-      const id = decodeURIComponent(parts[0])
-      if (parts.length === 1) return handlers.taskById(req, res, id)
-      return handlers.action(req, res, id, parts[1])
+    /* Flat exact routes only: a `prefix` route under /api loses to the
+       connection gateway's own /api handler, which answers 401 "unauthorized"
+       for anything it does not own. The task id therefore travels in the query
+       string (`?id=`) and the payload stays in the body. */
+    const taskRoute = (req, res) => handlers.taskById(req, res, taskIdOf(req))
+    const actionRoute = name => (req, res) => handlers.action(req, res, taskIdOf(req), name)
+
+    const routes = [
+      { kind: 'exact', path: `${PREFIX}/health`, handler: handlers.health },
+      { kind: 'exact', path: `${PREFIX}/settings`, handler: handlers.settings },
+      { kind: 'exact', path: `${PREFIX}/settings/test`, handler: handlers.test },
+      { kind: 'exact', path: `${PREFIX}/file`, handler: handlers.file },
+      { kind: 'exact', path: `${PREFIX}/reveal`, handler: handlers.reveal },
+      { kind: 'exact', path: `${PREFIX}/tasks`, handler: handlers.tasks },
+      { kind: 'exact', path: `${PREFIX}/task`, handler: taskRoute },
+    ]
+    for (const name of TASK_ACTIONS) {
+      routes.push({ kind: 'exact', path: `${PREFIX}/${name}`, handler: actionRoute(name) })
     }
 
-    const disposers = [
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/health`, handler: wrap(handlers.health) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/settings`, handler: wrap(handlers.settings) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/settings/test`, handler: wrap(handlers.test) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/file`, handler: wrap(handlers.file) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/reveal`, handler: wrap(handlers.reveal) }),
-      ctx.webServer.register({ kind: 'exact', path: `${PREFIX}/tasks`, handler: wrap(handlers.tasks) }),
-      ctx.webServer.register({ kind: 'prefix', path: TASK_PREFIX, handler: wrap(taskRoute) }),
-    ]
+    const disposers = routes.map(route => ctx.webServer.register({ kind: route.kind, path: route.path, handler: wrap(route.handler) }))
     return () => {
       for (const dispose of disposers.reverse()) {
         try {

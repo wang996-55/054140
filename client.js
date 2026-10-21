@@ -557,6 +557,12 @@ window.__ModuleLoader__.load({
     }
 
     // ---------------------------------------------------------------- utils
+    // The Host exposes flat exact routes (`/analyze?id=…`): a `prefix` route
+    // under /api would be swallowed by the connection gateway.
+    const taskApi = (id, action, options) => api(`/${action}?id=${encodeURIComponent(id)}`, options)
+    const taskGet = id => api(`/task?id=${encodeURIComponent(id)}`)
+    const taskDelete = id => api(`/task?id=${encodeURIComponent(id)}&confirm=1`, { method: 'DELETE' })
+
     const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0))
     const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
 
@@ -1048,7 +1054,7 @@ window.__ModuleLoader__.load({
         setBusy(true)
         setError('')
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/analyze`, { method: 'POST', body: {} })
+          const data = await taskApi(snapshot.task.id, 'analyze', { method: 'POST', body: {} })
           props.onChanged(data)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
@@ -1067,7 +1073,7 @@ window.__ModuleLoader__.load({
             const value = path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), scene)
             if (value === 'unknown' || value === undefined) confirmed[path] = ack[path] === true
           }
-          const data = await api(`/tasks/${snapshot.task.id}/scene-review`, {
+          const data = await taskApi(snapshot.task.id, 'scene-review', {
             method: 'PUT',
             body: { scene, confirmed },
           })
@@ -1538,7 +1544,7 @@ window.__ModuleLoader__.load({
             maskImage.data[index * 4 + 3] = state.alpha[index]
           }
           mctx.putImageData(maskImage, 0, 0)
-          await api(`/tasks/${snapshot.task.id}/cutout`, {
+          await taskApi(snapshot.task.id, 'cutout', {
             method: 'POST',
             body: {
               mode: mode === 'transparent' ? 'transparent' : 'auto',
@@ -1546,7 +1552,7 @@ window.__ModuleLoader__.load({
               mask_png: canvasToPngDataUrl(maskCanvas),
             },
           })
-          const data = await api(`/tasks/${snapshot.task.id}/mask`, { method: 'PUT', body: { confirm: true } })
+          const data = await taskApi(snapshot.task.id, 'mask', { method: 'PUT', body: { confirm: true } })
           props.onChanged(data)
           props.notify('ok', t('maskSaved'))
         } catch (failure) {
@@ -1607,12 +1613,12 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const generate = () => run('generate', () => api(`/tasks/${snapshot.task.id}/background`, { method: 'POST', body: { mode: 'generate' } }))
+      const generate = () => run('generate', () => taskApi(snapshot.task.id, 'background', { method: 'POST', body: { mode: 'generate' } }))
 
       const upload = async file => {
         if (!file) return
         const dataUrl = await fileToDataUrl(file)
-        run('upload', () => api(`/tasks/${snapshot.task.id}/background`, {
+        run('upload', () => taskApi(snapshot.task.id, 'background', {
           method: 'POST',
           body: { mode: 'upload', image: { data_url: dataUrl, name: file.name } },
         }))
@@ -1640,7 +1646,7 @@ window.__ModuleLoader__.load({
         if (!version) return
         run('select', async () => {
           const normalized = await normalize(version)
-          return api(`/tasks/${snapshot.task.id}/background`, {
+          return taskApi(snapshot.task.id, 'background', {
             method: 'POST',
             body: { mode: 'select', version_id: version.id, normalized_png: normalized, confirm: allChecked },
           })
@@ -2065,8 +2071,8 @@ window.__ModuleLoader__.load({
         setBusy('save')
         setError('')
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/composition`, { method: 'PUT', body: { composition: comp } })
-          props.onChanged(data)
+          const data = await taskApi(snapshot.task.id, 'composition', { method: 'PUT', body: { composition: comp } })
+          if (data.composition) setComp(current => Object.assign({}, current, data.composition))
           props.notify('ok', t('compSaved'))
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
@@ -2081,7 +2087,7 @@ window.__ModuleLoader__.load({
         try {
           const behind = renderOverlay(comp, 'behind')
           const front = renderOverlay(comp, 'front')
-          const data = await api(`/tasks/${snapshot.task.id}/export`, {
+          const data = await taskApi(snapshot.task.id, 'export', {
             method: 'POST',
             body: {
               composition: comp,
@@ -2333,7 +2339,7 @@ window.__ModuleLoader__.load({
         setBusy(true)
         setError('')
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/accept`, { method: 'POST', body: { rating, notes } })
+          const data = await taskApi(snapshot.task.id, 'accept', { method: 'POST', body: { rating, notes } })
           props.onChanged(data)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
@@ -2379,7 +2385,7 @@ window.__ModuleLoader__.load({
 
       const cancel = async () => {
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/cancel`, { method: 'POST', body: {} })
+          const data = await taskApi(snapshot.task.id, 'cancel', { method: 'POST', body: {} })
           props.onChanged(data)
         } catch (failure) {
           notify('bad', failure.message)
@@ -2460,7 +2466,7 @@ window.__ModuleLoader__.load({
         if (!window.confirm(t('deleteConfirm'))) return
         setBusy(id)
         try {
-          await api(`/tasks/${id}?confirm=1`, { method: 'DELETE' })
+          await taskDelete(id)
           await load()
         } catch (failure) {
           setError(failure.message)
@@ -2479,21 +2485,25 @@ window.__ModuleLoader__.load({
           : items.length === 0
             ? h('div', { style: ui.card }, h('p', { style: ui.p }, t('histEmpty')))
             : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-              items.map(item => h('div', { key: item.id, style: Object.assign({}, ui.cardTight, { display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }) },
-                h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 } },
-                  item.thumb
-                    ? h('img', { src: item.thumb, alt: '', style: { width: 54, height: 54, borderRadius: 8, objectFit: 'cover', border: `1px solid ${C.border}` } })
-                    : null,
-                  h('div', { style: { minWidth: 0 } },
-                    h('div', { style: { fontSize: 13, fontWeight: 600 } }, `${item.form ? item.form.reference_type : 'task'} · ${item.form ? item.form.aspect : ''}`),
-                    h('div', { style: { fontSize: 11.5, color: C.dim, display: 'flex', gap: 8, flexWrap: 'wrap' } },
-                      h('span', null, item.id),
-                      h('span', null, formatTime(item.updated_at || item.created_at)),
-                      item.rating ? h('span', null, `${t('ratingLabel')} ${item.rating}/5`) : null))),
-                h('div', { style: ui.row },
-                  h(Badge, { tone: item.state === 'done' ? 'ok' : item.state === 'failed' ? 'bad' : 'dim' }, t(`st_${item.state}`) || item.state),
-                  h(Btn, { small: true, onClick: () => props.onOpen(item.id) }, t('open')),
-                  h(Btn, { small: true, variant: 'danger', disabled: busy === item.id, onClick: () => remove(item.id) }, t('deleteTask')))))))
+              items.map(item => {
+                const thumbName = item.export ? item.export.split('/').pop() : ''
+                const thumb = item.thumbnail || (thumbName ? `${API}/file?task=${encodeURIComponent(item.id)}&file=${encodeURIComponent(thumbName)}` : '')
+                return h('div', { key: item.id, style: Object.assign({}, ui.cardTight, { display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }) },
+                  h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 } },
+                    thumb
+                      ? h('img', { src: thumb, alt: '', style: { width: 54, height: 54, borderRadius: 8, objectFit: 'cover', border: `1px solid ${C.border}` } })
+                      : null,
+                    h('div', { style: { minWidth: 0 } },
+                      h('div', { style: { fontSize: 13, fontWeight: 600 } }, String(item.reference_type || 'task')),
+                      h('div', { style: { fontSize: 11.5, color: C.dim, display: 'flex', gap: 8, flexWrap: 'wrap' } },
+                        h('span', null, item.id),
+                        h('span', null, formatTime(item.created_at)),
+                        item.rating ? h('span', null, `${t('ratingLabel')} ${item.rating}/5`) : null))),
+                  h('div', { style: ui.row },
+                    h(Badge, { tone: item.state === 'done' ? 'ok' : item.state === 'failed' ? 'bad' : 'dim' }, t(`st_${item.state}`) || item.state),
+                    h(Btn, { small: true, onClick: () => props.onOpen(item.id) }, t('open')),
+                    h(Btn, { small: true, variant: 'danger', disabled: busy === item.id, onClick: () => remove(item.id) }, t('deleteTask'))))
+              })))
     }
     // ==== 85-settings.js ==================================================
 
@@ -2516,7 +2526,7 @@ window.__ModuleLoader__.load({
         try {
           const data = await api('/settings')
           setSettings(data.settings)
-          setKeyState({ has_key: data.has_key, key_source: data.key_source })
+          setKeyState({ has_key: data.has_key, key_source: data.source })
           props.onSettings && props.onSettings(data)
           setError('')
         } catch (failure) {
@@ -2553,7 +2563,7 @@ window.__ModuleLoader__.load({
         try {
           const data = await api('/settings', { method: 'PUT', body: { settings, api_key: apiKey } })
           setSettings(data.settings)
-          setKeyState({ has_key: data.has_key, key_source: data.key_source })
+          setKeyState({ has_key: data.has_key, key_source: data.source })
           setApiKey('')
           setNotice(t('saved'))
           props.onSettings && props.onSettings(data)
@@ -2571,7 +2581,7 @@ window.__ModuleLoader__.load({
         setNotice('')
         try {
           const data = await api('/settings/test', { method: 'POST', body: { kind, confirm_cost: true } })
-          setNotice(`${t('testOk')} · ${data.model || ''} ${data.latency_ms ? `${data.latency_ms}ms` : ''}`)
+          setNotice(`${t('testOk')} · ${data.model || ''} ${data.ms ? `${data.ms}ms` : ''}`)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
@@ -2606,9 +2616,9 @@ window.__ModuleLoader__.load({
             h(Field, { label: t('editsPath') },
               h(TextInput, { value: settings.paths.edits, onChange: value => patch('paths.edits', value) })),
             h(Field, { label: t('timeout') },
-              h(TextInput, { value: String(settings.timeouts.vision_ms), onChange: value => patch('timeouts.vision_ms', Number(value) || 0) })),
+              h(TextInput, { value: String(settings.timeout_ms), onChange: value => patch('timeout_ms', Number(value) || 0) })),
             h(Field, { label: t('imageTimeout') },
-              h(TextInput, { value: String(settings.timeouts.image_ms), onChange: value => patch('timeouts.image_ms', Number(value) || 0) })),
+              h(TextInput, { value: String(settings.image_timeout_ms), onChange: value => patch('image_timeout_ms', Number(value) || 0) })),
             h(Field, { label: t('imageSize') },
               h(TextInput, { value: settings.image_size || '', placeholder: '1024x1024', onChange: value => patch('image_size', value) }))),
           h('div', { style: { marginTop: 8 } },
@@ -2674,7 +2684,7 @@ window.__ModuleLoader__.load({
         api('/settings')
           .then(data => {
             setSettings(data)
-            setHealth({ has_key: data.has_key, key_source: data.key_source })
+            setHealth({ has_key: data.has_key, key_source: data.source })
           })
           .catch(failure => setError(failure.message))
       }, [])
@@ -2689,7 +2699,7 @@ window.__ModuleLoader__.load({
 
       const refresh = useCallback(async () => {
         if (!taskId) return null
-        const data = await api(`/tasks/${taskId}`)
+        const data = await taskGet(taskId)
         setSnapshot(data)
         return data
       }, [taskId])
@@ -2697,7 +2707,7 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (view !== 'task' || !taskId) return undefined
         let cancelled = false
-        api(`/tasks/${taskId}`)
+        taskGet(taskId)
           .then(data => { if (!cancelled) setSnapshot(data) })
           .catch(failure => { if (!cancelled) setError(failure.message) })
         return () => { cancelled = true }
@@ -2732,7 +2742,7 @@ window.__ModuleLoader__.load({
       let body = null
       if (view === 'home') body = h(HomeView, { settings, onCreated })
       else if (view === 'history') body = h(HistoryView, { onOpen: openTask })
-      else if (view === 'settings') body = h(SettingsView, { onSettings: data => { setSettings(data); setHealth({ has_key: data.has_key, key_source: data.key_source }) } })
+      else if (view === 'settings') body = h(SettingsView, { onSettings: data => { setSettings(data); setHealth({ has_key: data.has_key, key_source: data.source }) } })
       else if (view === 'task') {
         body = snapshot && snapshot.task
           ? h(TaskView, { snapshot, settings, refresh, notify, onChanged: applySnapshot })

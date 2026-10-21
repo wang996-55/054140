@@ -347,8 +347,8 @@
         setBusy('save')
         setError('')
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/composition`, { method: 'PUT', body: { composition: comp } })
-          props.onChanged(data)
+          const data = await taskApi(snapshot.task.id, 'composition', { method: 'PUT', body: { composition: comp } })
+          if (data.composition) setComp(current => Object.assign({}, current, data.composition))
           props.notify('ok', t('compSaved'))
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
@@ -363,7 +363,7 @@
         try {
           const behind = renderOverlay(comp, 'behind')
           const front = renderOverlay(comp, 'front')
-          const data = await api(`/tasks/${snapshot.task.id}/export`, {
+          const data = await taskApi(snapshot.task.id, 'export', {
             method: 'POST',
             body: {
               composition: comp,

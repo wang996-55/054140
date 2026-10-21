@@ -52,7 +52,7 @@
         api('/settings')
           .then(data => {
             setSettings(data)
-            setHealth({ has_key: data.has_key, key_source: data.key_source })
+            setHealth({ has_key: data.has_key, key_source: data.source })
           })
           .catch(failure => setError(failure.message))
       }, [])
@@ -67,7 +67,7 @@
 
       const refresh = useCallback(async () => {
         if (!taskId) return null
-        const data = await api(`/tasks/${taskId}`)
+        const data = await taskGet(taskId)
         setSnapshot(data)
         return data
       }, [taskId])
@@ -75,7 +75,7 @@
       useEffect(() => {
         if (view !== 'task' || !taskId) return undefined
         let cancelled = false
-        api(`/tasks/${taskId}`)
+        taskGet(taskId)
           .then(data => { if (!cancelled) setSnapshot(data) })
           .catch(failure => { if (!cancelled) setError(failure.message) })
         return () => { cancelled = true }
@@ -110,7 +110,7 @@
       let body = null
       if (view === 'home') body = h(HomeView, { settings, onCreated })
       else if (view === 'history') body = h(HistoryView, { onOpen: openTask })
-      else if (view === 'settings') body = h(SettingsView, { onSettings: data => { setSettings(data); setHealth({ has_key: data.has_key, key_source: data.key_source }) } })
+      else if (view === 'settings') body = h(SettingsView, { onSettings: data => { setSettings(data); setHealth({ has_key: data.has_key, key_source: data.source }) } })
       else if (view === 'task') {
         body = snapshot && snapshot.task
           ? h(TaskView, { snapshot, settings, refresh, notify, onChanged: applySnapshot })

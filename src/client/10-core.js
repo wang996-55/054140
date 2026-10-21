@@ -516,6 +516,12 @@
     }
 
     // ---------------------------------------------------------------- utils
+    // The Host exposes flat exact routes (`/analyze?id=…`): a `prefix` route
+    // under /api would be swallowed by the connection gateway.
+    const taskApi = (id, action, options) => api(`/${action}?id=${encodeURIComponent(id)}`, options)
+    const taskGet = id => api(`/task?id=${encodeURIComponent(id)}`)
+    const taskDelete = id => api(`/task?id=${encodeURIComponent(id)}&confirm=1`, { method: 'DELETE' })
+
     const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0))
     const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
 

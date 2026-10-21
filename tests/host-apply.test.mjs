@@ -48,8 +48,10 @@ const ctx = {
 }
 
 plugin.apply(ctx)
-check('routes registered', routes.length === 7, routes.map(route => `${route.kind}:${route.path}`))
-check('prefix route', routes.some(route => route.kind === 'prefix' && route.path === '/api/ai-replica/tasks/'))
+check('routes registered', routes.length === 17, routes.length)
+check('flat task route', routes.some(route => route.kind === 'exact' && route.path === '/api/ai-replica/task'))
+check('flat action routes', ['analyze', 'scene-review', 'mask', 'background', 'export'].every(name => routes.some(route => route.path === `/api/ai-replica/${name}`)))
+check('no prefix routes', routes.every(route => route.kind === 'exact'), routes.map(route => route.kind))
 
 class Req extends EventEmitter {
   constructor(method, url, headers) {
@@ -111,7 +113,7 @@ check('settings ok', settings.status === 200 && typeof settings.body.settings.ba
 const tasks = await hit('GET', '/api/ai-replica/tasks')
 check('task list ok', tasks.status === 200 && Array.isArray(tasks.body.items), tasks.status)
 
-const missing = await hit('GET', '/api/ai-replica/tasks/does-not-exist')
+const missing = await hit('GET', '/api/ai-replica/task?id=does-not-exist')
 check('missing task 404', missing.status === 404, missing.status)
 
 const crossSite = await hit('GET', '/api/ai-replica/health', { host: '127.0.0.1:52434', origin: 'https://evil.example' })

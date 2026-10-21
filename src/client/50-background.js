@@ -31,12 +31,12 @@
         }
       }
 
-      const generate = () => run('generate', () => api(`/tasks/${snapshot.task.id}/background`, { method: 'POST', body: { mode: 'generate' } }))
+      const generate = () => run('generate', () => taskApi(snapshot.task.id, 'background', { method: 'POST', body: { mode: 'generate' } }))
 
       const upload = async file => {
         if (!file) return
         const dataUrl = await fileToDataUrl(file)
-        run('upload', () => api(`/tasks/${snapshot.task.id}/background`, {
+        run('upload', () => taskApi(snapshot.task.id, 'background', {
           method: 'POST',
           body: { mode: 'upload', image: { data_url: dataUrl, name: file.name } },
         }))
@@ -64,7 +64,7 @@
         if (!version) return
         run('select', async () => {
           const normalized = await normalize(version)
-          return api(`/tasks/${snapshot.task.id}/background`, {
+          return taskApi(snapshot.task.id, 'background', {
             method: 'POST',
             body: { mode: 'select', version_id: version.id, normalized_png: normalized, confirm: allChecked },
           })

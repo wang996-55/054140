@@ -56,7 +56,7 @@
         setBusy(true)
         setError('')
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/accept`, { method: 'POST', body: { rating, notes } })
+          const data = await taskApi(snapshot.task.id, 'accept', { method: 'POST', body: { rating, notes } })
           props.onChanged(data)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
@@ -102,7 +102,7 @@
 
       const cancel = async () => {
         try {
-          const data = await api(`/tasks/${snapshot.task.id}/cancel`, { method: 'POST', body: {} })
+          const data = await taskApi(snapshot.task.id, 'cancel', { method: 'POST', body: {} })
           props.onChanged(data)
         } catch (failure) {
           notify('bad', failure.message)

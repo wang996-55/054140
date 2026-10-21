@@ -18,7 +18,7 @@
         try {
           const data = await api('/settings')
           setSettings(data.settings)
-          setKeyState({ has_key: data.has_key, key_source: data.key_source })
+          setKeyState({ has_key: data.has_key, key_source: data.source })
           props.onSettings && props.onSettings(data)
           setError('')
         } catch (failure) {
@@ -55,7 +55,7 @@
         try {
           const data = await api('/settings', { method: 'PUT', body: { settings, api_key: apiKey } })
           setSettings(data.settings)
-          setKeyState({ has_key: data.has_key, key_source: data.key_source })
+          setKeyState({ has_key: data.has_key, key_source: data.source })
           setApiKey('')
           setNotice(t('saved'))
           props.onSettings && props.onSettings(data)
@@ -73,7 +73,7 @@
         setNotice('')
         try {
           const data = await api('/settings/test', { method: 'POST', body: { kind, confirm_cost: true } })
-          setNotice(`${t('testOk')} · ${data.model || ''} ${data.latency_ms ? `${data.latency_ms}ms` : ''}`)
+          setNotice(`${t('testOk')} · ${data.model || ''} ${data.ms ? `${data.ms}ms` : ''}`)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
@@ -108,9 +108,9 @@
             h(Field, { label: t('editsPath') },
               h(TextInput, { value: settings.paths.edits, onChange: value => patch('paths.edits', value) })),
             h(Field, { label: t('timeout') },
-              h(TextInput, { value: String(settings.timeouts.vision_ms), onChange: value => patch('timeouts.vision_ms', Number(value) || 0) })),
+              h(TextInput, { value: String(settings.timeout_ms), onChange: value => patch('timeout_ms', Number(value) || 0) })),
             h(Field, { label: t('imageTimeout') },
-              h(TextInput, { value: String(settings.timeouts.image_ms), onChange: value => patch('timeouts.image_ms', Number(value) || 0) })),
+              h(TextInput, { value: String(settings.image_timeout_ms), onChange: value => patch('image_timeout_ms', Number(value) || 0) })),
             h(Field, { label: t('imageSize') },
               h(TextInput, { value: settings.image_size || '', placeholder: '1024x1024', onChange: value => patch('image_size', value) }))),
           h('div', { style: { marginTop: 8 } },

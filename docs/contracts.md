@@ -148,26 +148,28 @@ created → analyzing → scene_review → mask_review → background_review →
 
 | 方法 & 路径 | 请求 | 成功响应 | 主要错误 |
 | --- | --- | --- | --- |
-| `GET /health` | — | `{ version, root, has_key, key_source, cutout:'local-browser', compositor:'host-node' }` | — |
-| `GET /settings` | — | `{ settings, has_key, key_source, enums, labels, composition_enums, versions }` | — |
-| `PUT /settings` | `{ settings, api_key? }` | `{ settings, has_key, key_source }` | `bad-request` |
-| `POST /settings/test` | `{ kind:'vision'|'image', confirm_cost:true }` | `{ model, latency_ms }` | `bad-request`（未确认）、`provider-*` |
-| `GET /tasks?limit=` | — | `{ items:[{ id, state, form, rating, thumb, created_at, updated_at }] }` | — |
+| `GET /health` | — | `{ version, root, has_key, source, cutout:'local-browser', compositor:'host-node' }` | — |
+| `GET /settings` | — | `{ settings, has_key, source, enums, labels, composition_enums, versions }` | — |
+| `PUT /settings` | `{ settings, api_key? }` | `{ settings, has_key, source }` | `bad-request` |
+| `POST /settings/test` | `{ kind:'vision'|'image', confirm_cost:true }` | `{ ok, kind, ms, ...provider }` | `bad-request`（未确认）、`provider-*` |
+| `GET /tasks?limit=` | — | `{ total, items:[{ id, state, reference_type, rating, export, thumbnail, created_at, updated_at }] }` | — |
 | `POST /tasks` | `{ form, images:{ reference, product? } }`（data URL） | 完整 snapshot | `product-required`(400)、`asset-invalid` |
-| `GET /tasks/:id` | — | 完整 snapshot | `not-found`(404) |
-| `DELETE /tasks/:id?confirm=1` | — | `{ deleted:true }` | `bad-request`（未确认） |
-| `POST /tasks/:id/analyze` | `{}` | 完整 snapshot | `budget-exhausted`(409)、`scene-schema-invalid`(502)、`provider-auth`(502)、`provider-rate-limit`(429)、`provider-timeout-unknown`(504) |
-| `PUT /tasks/:id/scene-review` | `{ scene, confirmed:{path:true} }` | snapshot（state→`mask_review`） | `scene-unconfirmed`(409)、`scene-schema-invalid` |
-| `POST /tasks/:id/cutout` | `{ mode, product_png, mask_png }` | snapshot | `asset-invalid` |
-| `PUT /tasks/:id/mask` | `{ confirm:true, product_png?, mask_png?, confirm_continue? }` | snapshot（state→`background_review`，写入 `compatibility`） | `mask-unconfirmed`、`view-mismatch`(409) |
-| `POST /tasks/:id/compatibility` | `{ confirm_continue? }` | snapshot | `view-mismatch` |
-| `POST /tasks/:id/background` | `{ mode:'generate' }` / `{ mode:'upload', image }` / `{ mode:'select', version_id, normalized_png?, confirm? }` | snapshot（confirm→`editing`） | `budget-exhausted`、`background-missing`、`provider-*` |
-| `PUT /tasks/:id/composition` | `{ composition }` | snapshot | `composition-invalid` |
-| `POST /tasks/:id/export` | `{ composition?, overlays:{ behind?, front? } }` | `{ export:{ file, width, height, bytes, sha256 }, ...snapshot }` | `mask-unconfirmed`、`background-missing`、`compose-invalid` |
-| `POST /tasks/:id/accept` | `{ rating:1..5, notes }` | snapshot（state→`done`） | `bad-request` |
-| `POST /tasks/:id/cancel` | `{}` | snapshot（state→`cancelled`） | — |
+| `GET /task?id=` | — | 完整 snapshot | `not-found`(404) |
+| `DELETE /task?id=&confirm=1` | — | `{ deleted:id }` | `bad-request`（未确认） |
+| `POST /analyze?id=` | `{}` | 完整 snapshot | `budget-exhausted`(409)、`scene-schema-invalid`(502)、`provider-missing`(409)、`provider-auth`(502)、`provider-rate-limit`(429)、`provider-timeout-unknown`(504) |
+| `PUT /scene-review?id=` | `{ scene, confirmed:{path:true} }` | snapshot（state→`mask_review`） | `scene-unconfirmed`(409)、`scene-schema-invalid` |
+| `POST /cutout?id=` | `{ mode, product_png, mask_png }` | snapshot | `asset-invalid` |
+| `PUT /mask?id=` | `{ confirm:true, product_png?, mask_png?, confirm_continue? }` | snapshot（state→`background_review`，写入 `compatibility`） | `mask-unconfirmed`、`view-mismatch`(409) |
+| `POST /compatibility?id=` | `{ confirm_continue? }` | snapshot | `view-mismatch` |
+| `POST /background?id=` | `{ mode:'generate' }` / `{ mode:'upload', image }` / `{ mode:'select', version_id, normalized_png?, confirm? }` | snapshot（confirm→`editing`） | `budget-exhausted`、`background-missing`、`provider-*` |
+| `PUT /composition?id=` | `{ composition }` | snapshot | `composition-invalid` |
+| `POST /export?id=` | `{ composition?, overlays:{ behind?, front? } }` | `{ export:{ file, width, height, bytes, sha256 }, url, ...snapshot }` | `mask-unconfirmed`、`background-missing`、`compose-invalid` |
+| `POST /accept?id=` | `{ rating:1..5, notes }` | snapshot（state→`done`） | `bad-request` |
+| `POST /cancel?id=` | `{}` | snapshot（state→`cancelled`） | — |
 | `GET /file?task=&file=` | — | PNG/JPEG 二进制 | `bad-request`（穿越）、`asset-invalid` |
-| `POST /reveal` | `{ task }` | `{ opened:true }` | — |
+| `POST /reveal` | `{ task }` | `{ ok, dir }` | — |
+
+> **为什么不是 `/tasks/:id/...`**：`/api` 前缀下有连接网关（`ctx.connection`）自己的 handler，它在同一个 `/api` 前缀上优先应答，把任何未被精确注册的 `/api/*/*/...` 路径当成 RPC 端点并返回 `401 unauthorized`（实测）。因此本插件只注册 **精确路径**，任务 id 走查询参数 `?id=`，`prefix` 路由一律不用。
 
 **snapshot**（所有返回任务的响应同一形状）：
 
@@ -227,7 +229,7 @@ codes：`view-unknown` `view-mismatch` `placement-blocked` `surface-suspended` `
 `PREFIX='/api/ai-replica'`、`VERSION='2.0.0'`、`createHandlers() → { health, settings, test, tasks, taskById, action, file, reveal }`、`export { snapshot }`。
 
 ### `index.js`
-`export const inject = ['webServer']`，`export function apply(ctx)`：`ctx.effect` 内注册 6 条 exact + 1 条 prefix（`/api/ai-replica/tasks/`，自行解析 `:id/:action`），统一 `wrap()` 做 Origin/Host 校验 + `AppError → JSON`。
+`export const inject = ['webServer']`，`export function apply(ctx)`：`ctx.effect` 内注册 **17 条精确路由**（`health`、`settings`、`settings/test`、`file`、`reveal`、`tasks`、`task`，加 10 个动作 `analyze / scene-review / cutout / mask / compatibility / background / composition / export / accept / cancel`），任务 id 从 `?id=` 读取，统一 `wrap()` 做 Origin/Host 校验 + `AppError → JSON`。
 
 ---
 
