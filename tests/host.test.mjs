@@ -128,15 +128,35 @@ const scenePayload = {
 }
 
 const calls = []
+const PRODUCT_TEXT = `**1. 商品名称：**
+不锈钢保温杯 500ml
+
+**2. 核心卖点：**
+316 内胆；24 小时保温
+
+**3. 规格参数：**
+- **（1）颜色：** 哑光黑
+- **（2）外观：** 圆柱形直身杯体，磨砂表面`
+const requestPrompt = options => {
+  const raw = options && options.body
+  try {
+    const body = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return JSON.stringify(body && (body.messages || body.input || body))
+  } catch {
+    return String(raw || '')
+  }
+}
 globalThis.fetch = async (url, options) => {
   calls.push({ url: String(url), options })
   if (String(url).includes('/chat/completions')) {
+    // 同一条视觉通道上有两种提示词：商品信息提取 / 场景分析，按提示词区分回包。
+    const isProduct = requestPrompt(options).includes('专业的电商产品信息提取专家')
     return {
       ok: true,
       status: 200,
       headers: { get: () => null },
       arrayBuffer: async () => Buffer.from(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(scenePayload) } }],
+        choices: [{ message: { content: isProduct ? PRODUCT_TEXT : JSON.stringify(scenePayload) } }],
         usage: { total_tokens: 42 },
       })),
     }
@@ -147,6 +167,16 @@ globalThis.fetch = async (url, options) => {
       status: 200,
       headers: { get: () => null },
       arrayBuffer: async () => Buffer.from(JSON.stringify({ data: [{ b64_json: encodePng(solid(64, 64, [240, 235, 225, 255])).toString('base64') }] })),
+    }
+  }
+  if (String(url).includes('/models')) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      arrayBuffer: async () => Buffer.from(JSON.stringify({
+        data: [{ id: 'vision-large' }, { id: 'vision-small' }],
+      })),
     }
   }
   return {
@@ -196,6 +226,20 @@ await call(handlers.settings, 'PUT', '/api/ai-replica/settings', { settings: {},
 const testWithoutConfirm = await call(handlers.test, 'POST', '/api/ai-replica/settings/test', { kind: 'vision' })
 check('test needs confirm', testWithoutConfirm.status === 400, testWithoutConfirm.body)
 
+// ------------------------------------------------------------ model listing
+const modelList = await call(handlers.models, 'POST', '/api/ai-replica/settings/models', { kind: 'vision' })
+check('model list ok', modelList.status === 200 && modelList.body.count === 2 && modelList.body.models.includes('vision-large'), modelList.body)
+check('model list never echoes the key', JSON.stringify(modelList.body).includes('sk-vision-123') === false, modelList.body)
+const imageModelList = await call(handlers.models, 'POST', '/api/ai-replica/settings/models', { kind: 'image' })
+check('model list works for the image channel too', imageModelList.status === 200 && imageModelList.body.kind === 'image', imageModelList.body)
+const modelsCall = calls.filter(item => item.url.includes('/models')).pop()
+check('model list uses the edited relay url', modelsCall && modelsCall.url.startsWith('https://relay-image.test/v1/models'), modelsCall && modelsCall.url)
+const unsavedRelay = await call(handlers.models, 'POST', '/api/ai-replica/settings/models', {
+  kind: 'vision',
+  channel: { base_url: 'https://relay-draft.test/v1', auth: 'bearer', path: '/chat/completions' },
+})
+check('model list accepts an unsaved relay url', unsavedRelay.status === 200 && calls.some(item => item.url.startsWith('https://relay-draft.test/v1/models')), unsavedRelay.body)
+
 // -------------------------------------------------------------- create task
 const created = await call(handlers.tasks, 'POST', '/api/ai-replica/tasks', {
   form: {
@@ -217,15 +261,46 @@ const noProduct = await call(handlers.tasks, 'POST', '/api/ai-replica/tasks', {
 })
 check('product required', noProduct.status === 400 && noProduct.body.code === 'product-required', noProduct.body)
 
-// -------------------------------------------------------------- scene gates
-const early = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${taskId}/export`, {}, taskId, 'export')
-check('export blocked before mask', early.status === 409, early.body)
+// ------------------------------------------------------- 商品信息提取（描述词）
+const describeEarly = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${taskId}/describe`, {}, taskId, 'describe')
+check('describe before analyze is allowed', describeEarly.status === 200, describeEarly.body)
+check('describe keeps the task on the scene gate', describeEarly.body.task.state === 'scene_review', describeEarly.body.task.state)
+check('describe stored the name', describeEarly.body.product.profile.name === '不锈钢保温杯 500ml', describeEarly.body.product)
+check('describe stored the colour', describeEarly.body.product.profile.color === '哑光黑', describeEarly.body.product)
+check('describe stored the appearance', describeEarly.body.product.profile.appearance.includes('磨砂'), describeEarly.body.product)
+check('describe kept two selling points', describeEarly.body.product.profile.selling_points.length === 2, describeEarly.body.product.profile.selling_points)
+check('describe counted its own budget', describeEarly.body.task.budget.product_calls === 1 && describeEarly.body.task.budget.vision_calls === 0, describeEarly.body.task.budget)
+check('describe never echoes a key', JSON.stringify(describeEarly.body).includes('sk-vision-123') === false, Object.keys(describeEarly.body))
+const describePrompt = calls.filter(item => item.url.includes('/chat/completions')).pop()
+check('describe sends the built-in product prompt', describePrompt && requestPrompt(describePrompt.options).includes('专业的电商产品信息提取专家'), describePrompt && requestPrompt(describePrompt.options).slice(0, 120))
+check('describe sends the product image', describePrompt && requestPrompt(describePrompt.options).includes('data:image/png;base64'), 'no image in payload')
 
+// 人工改正商品信息（模型可能把颜色写错）
+const editedProfile = await call(handlers.action, 'PUT', `/api/ai-replica/tasks/${taskId}/product-profile`, {
+  profile: { name: '保温杯 500ml', selling_points: ['316 内胆'], color: '雾霾蓝', appearance: '圆柱形杯体' },
+}, taskId, 'product-profile')
+check('profile can be edited', editedProfile.status === 200 && editedProfile.body.product.profile.color === '雾霾蓝', editedProfile.body.product)
+check('manual profile is confirmed', editedProfile.body.product.confirmed === true && editedProfile.body.product.source === 'manual', editedProfile.body.product)
+const emptyProfile = await call(handlers.action, 'PUT', `/api/ai-replica/tasks/${taskId}/product-profile`, {
+  profile: { name: '', selling_points: [], color: '', appearance: '' },
+}, taskId, 'product-profile')
+check('empty profile rejected', emptyProfile.status === 400, emptyProfile.body)
+
+// 商品信息要进入后续提示词：场景分析带上商品摘要，背景提示词带上商品摘要
+calls.length = 0
 const analyzed = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${taskId}/analyze`, {}, taskId, 'analyze')
 check('analyze ok', analyzed.status === 200 && analyzed.body.task.state === 'scene_review', analyzed.body)
 check('analysis stored', analyzed.body.scene.analysis && analyzed.body.scene.analysis.scene.camera.angle === 'eye_level', analyzed.body.scene)
 check('one vision call', analyzed.body.task.budget.vision_calls === 1, analyzed.body.task.budget)
 check('background prompt compiled', typeof analyzed.body.prompts.background.text === 'string' && analyzed.body.prompts.background.text.includes('禁止'), analyzed.body.prompts)
+check('background prompt carries the product', analyzed.body.prompts.background.text.includes('保温杯 500ml'), analyzed.body.prompts.background.text)
+const analyzeCall = calls.find(item => item.url.includes('/chat/completions'))
+check('scene prompt carries the product', analyzeCall && requestPrompt(analyzeCall.options).includes('保温杯 500ml'), analyzeCall && requestPrompt(analyzeCall.options).slice(0, 200))
+check('scene prompt is not the product prompt', analyzeCall && !requestPrompt(analyzeCall.options).includes('商品信息提取专家'), 'wrong prompt')
+
+// -------------------------------------------------------------- scene gates
+const early = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${taskId}/export`, {}, taskId, 'export')
+check('export blocked before mask', early.status === 409, early.body)
 
 const badReview = await call(handlers.action, 'PUT', `/api/ai-replica/tasks/${taskId}/scene-review`, {
   scene: { camera: { angle: 'unknown' } },
@@ -353,6 +428,13 @@ const third = await call(handlers.tasks, 'POST', '/api/ai-replica/tasks', {
 })
 const authFail = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${third.body.task.id}/analyze`, {}, third.body.task.id, 'analyze')
 check('401 mapped', authFail.status === 502 && authFail.body.code === 'provider-auth', authFail.body)
+
+const authFailModels = await call(handlers.models, 'POST', '/api/ai-replica/settings/models', { kind: 'vision' })
+check('model list maps 401', authFailModels.status === 502 && authFailModels.body.code === 'provider-auth', authFailModels.body)
+
+await call(handlers.settings, 'PUT', '/api/ai-replica/settings', { settings: {}, vision_api_key: '', image_api_key: '' })
+const noKeyModels = await call(handlers.models, 'POST', '/api/ai-replica/settings/models', { kind: 'image' })
+check('model list needs a key', noKeyModels.status === 409 && noKeyModels.body.code === 'provider-missing', noKeyModels.body)
 
 await rm(root, { recursive: true, force: true })
 console.log(`PASS ${pass} / FAIL ${fail}`)

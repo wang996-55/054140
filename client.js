@@ -27,12 +27,21 @@ window.__ModuleLoader__.load({
     const STAGES = ['created', 'analyzing', 'scene_review', 'mask_review', 'background_review', 'editing', 'exporting', 'done']
     const ACTIVE_STATES = ['analyzing', 'exporting']
 
-    // One keyframe rule, injected once; the tokens handle every colour.
+    // One keyframe block, injected once; the tokens handle every colour.
     try {
       if (!document.getElementById('ai-replica-style')) {
         const style = document.createElement('style')
         style.id = 'ai-replica-style'
-        style.textContent = '@keyframes rep-spin{to{transform:rotate(360deg)}}'
+        style.textContent = [
+          '@keyframes rep-spin{to{transform:rotate(360deg)}}',
+          '@keyframes rep-slide-right{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:translateX(0)}}',
+          '@keyframes rep-slide-left{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:translateX(0)}}',
+          '@keyframes rep-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}',
+          '.rep-pane-scroll{scrollbar-width:thin;overscroll-behavior:contain}',
+          '.rep-pane-scroll::-webkit-scrollbar{width:10px;height:10px}',
+          '.rep-pane-scroll::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:8px;border:3px solid transparent;background-clip:content-box}',
+          '.rep-pane-scroll::-webkit-scrollbar-track{background:transparent}',
+        ].join('')
         document.head.appendChild(style)
       }
     } catch {
@@ -235,6 +244,26 @@ window.__ModuleLoader__.load({
         bgSelected: '背景已确认',
         sceneSaved: '场景已保存',
 
+        profileTitle: '商品信息（商品描述词）',
+        profileIntro: '上传商品图后由视觉模型按固定顺序提取：商品名称 → 核心卖点 → 规格参数（颜色、外观）。可以修改，也可以重新提取。',
+        profileEmpty: '还没有提取到商品信息，可以点「重新提取」，或直接手动填写。',
+        profileRedescribe: '重新提取',
+        profileDescribing: '提取中…',
+        profileEdit: '修改',
+        profileCollapse: '收起',
+        profileName: '1. 商品名称',
+        profilePoints: '2. 核心卖点（最多 3 项，用分号分隔）',
+        profileColor: '3. 规格参数 · 颜色',
+        profileAppearance: '3. 规格参数 · 外观',
+        profileSave: '保存商品信息',
+        profileSaved: '商品信息已保存',
+        profileFromVision: '模型提取',
+        profileManual: '手动填写',
+        profileHint: '这些内容会写进场景分析与背景提示词；没有依据的字段请保持「未提供」，不要凭猜填写。',
+        profileDescribeFailed: '商品信息提取失败：',
+        profileAutoHint: '提交后会自动调用视觉模型，生成商品名称、核心卖点与规格参数。',
+        notProvided: '未提供',
+
         histTitle: '历史任务',
         histEmpty: '还没有任务记录',
         open: '打开',
@@ -256,6 +285,9 @@ window.__ModuleLoader__.load({
         modelId: '模型',
         authStyle: '鉴权方式',
         headersJson: '额外请求头（JSON，可留空）',
+        headersHint: '需要二次鉴权的中转站可在这里加 X-Relay-Token 等请求头，会与认证头合并。',
+        testNeedsKey: '填入 API Key 后才能测试',
+        discard: '放弃修改',
         headersInvalid: '额外请求头必须是合法的 JSON 对象，例如 {"X-Relay-Token":"abc"}',
         channelKey: '该通道 API Key',
         keySaved: '已保存（留空表示不修改）',
@@ -270,6 +302,18 @@ window.__ModuleLoader__.load({
         imageSize: '生图尺寸',
         allowLocalhost: '允许本机中转站（127.0.0.1）',
         saveSettings: '保存设置',
+        visionShort: '视觉通道',
+        imageShort: '生图通道',
+        noKey: '未配置 Key',
+        unsaved: '有未保存的修改',
+        fetchModels: '拉取模型',
+        fetchingModels: '拉取中…',
+        modelList: '从列表中选择',
+        modelListEmpty: '该中转站没有返回模型，请手动填写',
+        modelListHint: '按上面的地址与 Key 读取中转站的模型列表（通常不计费）。',
+        modelListCount: '个模型',
+        modelsPath: '模型列表路径（可留空）',
+        modelsPathHint: '留空则用「中转站地址 + /models」；个别中转站路径不同可改这里。',
         testVision: '测试视觉通道',
         testImage: '测试生图通道',
         testCost: '测试会真实消耗一次请求，是否继续？',
@@ -469,6 +513,26 @@ window.__ModuleLoader__.load({
         bgSelected: 'Background confirmed',
         sceneSaved: 'Scene saved',
 
+        profileTitle: 'Product info (description)',
+        profileIntro: 'Right after the product photo is uploaded the vision model extracts, in fixed order: name → selling points → specifications (colour, appearance). Edit it or run it again.',
+        profileEmpty: 'No product info yet. Run the extraction again, or fill the fields manually.',
+        profileRedescribe: 'Extract again',
+        profileDescribing: 'Extracting…',
+        profileEdit: 'Edit',
+        profileCollapse: 'Collapse',
+        profileName: '1. Product name',
+        profilePoints: '2. Selling points (max 3, semicolon separated)',
+        profileColor: '3. Specifications · colour',
+        profileAppearance: '3. Specifications · appearance',
+        profileSave: 'Save product info',
+        profileSaved: 'Product info saved',
+        profileFromVision: 'From the model',
+        profileManual: 'Manual',
+        profileHint: 'These fields feed the scene analysis and the background prompt. Keep "未提供" when the source has no evidence - never guess.',
+        profileDescribeFailed: 'Product extraction failed: ',
+        profileAutoHint: 'Submitting calls the vision model once to produce the name, selling points and specifications.',
+        notProvided: 'not provided',
+
         histTitle: 'Task history',
         histEmpty: 'No tasks yet',
         open: 'Open',
@@ -490,6 +554,9 @@ window.__ModuleLoader__.load({
         modelId: 'Model',
         authStyle: 'Auth style',
         headersJson: 'Extra headers (JSON, optional)',
+        headersHint: 'Relays that need a second token can add X-Relay-Token and friends here; they merge with the auth header.',
+        testNeedsKey: 'Add an API key to test this channel',
+        discard: 'Discard changes',
         headersInvalid: 'Extra headers must be a JSON object, e.g. {"X-Relay-Token":"abc"}',
         channelKey: 'API key for this channel',
         keySaved: 'Saved (leave empty to keep it)',
@@ -504,6 +571,18 @@ window.__ModuleLoader__.load({
         imageSize: 'Image size',
         allowLocalhost: 'Allow a local relay (127.0.0.1)',
         saveSettings: 'Save settings',
+        visionShort: 'Vision',
+        imageShort: 'Image',
+        noKey: 'no key',
+        unsaved: 'Unsaved changes',
+        fetchModels: 'Fetch models',
+        fetchingModels: 'Fetching…',
+        modelList: 'Pick from the list',
+        modelListEmpty: 'The relay returned no models; type the id manually',
+        modelListHint: 'Reads the model list with the URL and key above (usually free).',
+        modelListCount: 'models',
+        modelsPath: 'Model list path (optional)',
+        modelsPathHint: 'Empty means <base URL>/models; change it for relays that differ.',
         testVision: 'Test vision channel',
         testImage: 'Test image channel',
         testCost: 'The test really uses one request. Continue?',
@@ -706,6 +785,7 @@ window.__ModuleLoader__.load({
       h2: { fontSize: 15, fontWeight: 700, margin: '0 0 6px' },
       h3: { fontSize: 13, fontWeight: 700, margin: '0 0 4px' },
       p: { fontSize: 12.5, color: C.dim, lineHeight: 1.7, margin: 0 },
+      value: { fontSize: 13, color: C.text, lineHeight: 1.6, wordBreak: 'break-word' },
       mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
     }
 
@@ -914,6 +994,16 @@ window.__ModuleLoader__.load({
           }
           const data = await api('/tasks', { method: 'POST', body: payload })
           props.onCreated(data)
+          // 上传商品图后立刻调用视觉模型生成商品描述词（名称 / 卖点 / 规格）。
+          // 失败不阻断流程：任务页会显示原因，可以重试或手填。
+          if (images.product) {
+            try {
+              const described = await api(`/describe?id=${encodeURIComponent(data.task.id)}`, { method: 'POST', body: {} })
+              props.onCreated(described)
+            } catch (failure) {
+              props.notify(`${t('profileDescribeFailed')}${failure.message}`)
+            }
+          }
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
@@ -921,7 +1011,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const upload = (kind, label) => h('div', null,
+      const upload = (kind, label, hint) => h('div', null,
         h('label', { style: ui.label }, label),
         h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
           images[kind]
@@ -956,7 +1046,8 @@ window.__ModuleLoader__.load({
                 variant: 'ghost',
                 onClick: () => setImages(current => Object.assign({}, current, { [kind]: null })),
               }, t('removeImage'))
-              : null)))
+              : null),
+        hint ? h('p', { style: Object.assign({}, ui.p, { marginTop: 8, fontSize: 11.5 }) }, hint) : null))
 
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 980 } },
         h('div', null,
@@ -972,7 +1063,7 @@ window.__ModuleLoader__.load({
           h('div', { style: ui.card },
             h('h3', { style: ui.h3 }, t('productTitle')),
             h('p', { style: Object.assign({}, ui.p, { marginBottom: 10 }) }, t('productHint')),
-            upload('product', t('productTitle')),
+            upload('product', t('productTitle'), t('profileAutoHint')),
             h('div', { style: { marginTop: 12 } },
               h(Check, {
                 checked: form.creative_mode === true,
@@ -1045,6 +1136,88 @@ window.__ModuleLoader__.load({
       return list.map(value => ({ value, label: table[value] || value }))
     }
 
+    /* 商品信息（商品描述词）：上传商品图后由视觉模型按固定顺序提取
+       1 商品名称 / 2 核心卖点 / 3 规格参数（颜色、外观）。可以改，也可以重新提取；
+       这里的内容会进入场景分析与背景提示词。 */
+    function ProductCard(props) {
+      const product = (props.snapshot && props.snapshot.product) || {}
+      const profile = product.profile || {}
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const [open, setOpen] = useState(!product.profile)
+      const [draft, setDraft] = useState(() => ({
+        name: profile.name && profile.name !== '未提供' ? profile.name : '',
+        selling_points: (profile.selling_points || []).join('；'),
+        color: profile.color && profile.color !== '未提供' ? profile.color : '',
+        appearance: profile.appearance && profile.appearance !== '未提供' ? profile.appearance : '',
+      }))
+      useEffect(() => {
+        setDraft({
+          name: profile.name && profile.name !== '未提供' ? profile.name : '',
+          selling_points: (profile.selling_points || []).join('；'),
+          color: profile.color && profile.color !== '未提供' ? profile.color : '',
+          appearance: profile.appearance && profile.appearance !== '未提供' ? profile.appearance : '',
+        })
+      }, [product.created_at, product.source, profile.name, profile.color, profile.appearance])
+
+      if (!product.has_product_image) return null
+
+      const run = async (label, action, body, method) => {
+        setBusy(true)
+        setError('')
+        try {
+          const data = await taskApi(props.snapshot.task.id, action, { method: method || 'POST', body: body || {} })
+          props.onChanged(data)
+          if (props.notify) props.notify('ok', t('profileSaved'))
+        } catch (failure) {
+          setError(`${t('errorPrefix')}${failure.message}`)
+        } finally {
+          setBusy(false)
+        }
+      }
+
+      const describe = () => run('describe', 'describe')
+      const save = () => run('save', 'product-profile', {
+        profile: {
+          name: draft.name,
+          selling_points: draft.selling_points.split(/[；;、,，\n]+/).map(item => item.trim()).filter(Boolean).slice(0, 3),
+          color: draft.color,
+          appearance: draft.appearance,
+        },
+      }, 'PUT')
+
+      const field = (label, key, rows) => h(Field, { label },
+        rows
+          ? h(TextArea, { value: draft[key], rows, onChange: value => setDraft(current => Object.assign({}, current, { [key]: value })) })
+          : h(TextInput, { value: draft[key], onChange: value => setDraft(current => Object.assign({}, current, { [key]: value })) }))
+
+      const hasProfile = Boolean(product.profile)
+      return h('div', { style: Object.assign({}, ui.card, { borderLeft: `3px solid ${C.brand}` }) },
+        h('div', { style: Object.assign({}, ui.row, { justifyContent: 'space-between', alignItems: 'flex-start' }) },
+          h('div', null,
+            h('h3', { style: ui.h3 }, t('profileTitle')),
+            h('p', { style: ui.p }, hasProfile ? t('profileIntro') : t('profileEmpty'))),
+          h('div', { style: ui.row },
+            product.source ? h(Badge, { tone: 'dim' }, product.source === 'manual' ? t('profileManual') : t('profileFromVision')) : null,
+            h(Btn, { small: true, disabled: busy, title: t('costVision'), onClick: describe }, busy ? t('profileDescribing') : t('profileRedescribe')),
+            h(Btn, { small: true, onClick: () => setOpen(value => !value) }, open ? t('profileCollapse') : t('profileEdit')))),
+        error ? h('div', { style: { marginTop: 10 } }, h(Notice, { tone: 'bad' }, error)) : null,
+        open
+          ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 14 } },
+            field(t('profileName'), 'name'),
+            field(t('profilePoints'), 'selling_points'),
+            field(t('profileColor'), 'color'),
+            field(t('profileAppearance'), 'appearance'),
+            h('div', { style: Object.assign({}, ui.row, { marginTop: 4 }) },
+              h(Btn, { variant: 'primary', small: true, disabled: busy, onClick: save }, t('profileSave'))))
+          : h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 12 } },
+            h('div', null, h('div', { style: ui.label }, t('profileName')), h('div', { style: ui.value }, draft.name || t('notProvided'))),
+            h('div', null, h('div', { style: ui.label }, t('profilePoints')), h('div', { style: ui.value }, draft.selling_points || t('notProvided'))),
+            h('div', null, h('div', { style: ui.label }, t('profileColor')), h('div', { style: ui.value }, draft.color || t('notProvided'))),
+            h('div', null, h('div', { style: ui.label }, t('profileAppearance')), h('div', { style: ui.value }, draft.appearance || t('notProvided')))),
+        h('p', { style: Object.assign({}, ui.p, { marginTop: 10, fontSize: 11.5 }) }, t('profileHint')))
+    }
+
     function SceneStage(props) {
       const { snapshot, settings } = props
       const analysis = snapshot.scene.analysis
@@ -1111,13 +1284,15 @@ window.__ModuleLoader__.load({
       }
 
       if (!analysis) {
-        return h('div', { style: Object.assign({}, ui.card, { display: 'flex', flexDirection: 'column', gap: 12 }) },
-          h('h3', { style: ui.h3 }, t('step2')),
-          h('p', { style: ui.p }, t('sceneIntro')),
-          error ? h(Notice, { tone: 'bad' }, error) : null,
-          h('div', { style: ui.row },
-            h(Btn, { variant: 'primary', disabled: busy, onClick: runAnalysis }, busy ? t('analyzing') : t('analyze')),
-            h('span', { style: { fontSize: 12, color: C.dim } }, t('costVision'))))
+        return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+          h(ProductCard, { snapshot, notify: props.notify, onChanged: props.onChanged }),
+          h('div', { style: Object.assign({}, ui.card, { display: 'flex', flexDirection: 'column', gap: 12 }) },
+            h('h3', { style: ui.h3 }, t('step2')),
+            h('p', { style: ui.p }, t('sceneIntro')),
+            error ? h(Notice, { tone: 'bad' }, error) : null,
+            h('div', { style: ui.row },
+              h(Btn, { variant: 'primary', disabled: busy, onClick: runAnalysis }, busy ? t('analyzing') : t('analyze')),
+              h('span', { style: { fontSize: 12, color: C.dim } }, t('costVision')))))
       }
 
       const unknownPaths = ['camera.angle', 'camera.expected_product_view', 'lighting.direction', 'support_surface.type', 'placement.preferred_region']
@@ -1129,6 +1304,7 @@ window.__ModuleLoader__.load({
       const canReanalyze = budget.vision_calls < budget.max_vision_calls
 
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        h(ProductCard, { snapshot, notify: props.notify, onChanged: props.onChanged }),
         h('div', { style: ui.card },
           h('div', { style: Object.assign({}, ui.row, { justifyContent: 'space-between' }) },
             h('div', null,
@@ -2543,7 +2719,10 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------------ settings
     /* 视觉与生图两条独立通道：各填各的中转站、路径、模型、鉴权与 Key。
-       下拉选项由 Host 下发的 relay 枚举驱动，第三方中转站新协议不必改页面。 */
+       下拉选项由 Host 下发的 relay 枚举驱动，第三方中转站新协议不必改页面。
+
+       页面分三页签（视觉 / 生图 / 共享），切换时内容横向滑入、页签高亮块跟着滑动，
+       避免两条长表单竖着堆成一页把「保存」挤到屏幕外；保存条固定在底部，永远点得到。 */
     const PROVIDER_LABELS = {
       openai_chat: 'OpenAI Chat（/chat/completions）',
       openai_responses: 'OpenAI Responses（/responses）',
@@ -2564,6 +2743,8 @@ window.__ModuleLoader__.load({
     const authOptions = list => (Array.isArray(list) ? list : ['bearer', 'x-api-key', 'api-key', 'google', 'none'])
       .map(value => ({ value, label: AUTH_LABELS[value] || value }))
 
+    const SETTINGS_TABS = ['vision', 'image', 'shared']
+
     function ChannelCard(props) {
       const { channel, onChange, relay } = props
       const set = (path, value) => {
@@ -2577,15 +2758,14 @@ window.__ModuleLoader__.load({
         cursor[parts[parts.length - 1]] = value
         onChange(next)
       }
+      const hasKey = Boolean(props.keyState && props.keyState.has_key)
       return h('div', { style: ui.card },
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } },
           h('h3', { style: ui.h3 }, props.title),
-          h(Badge, { tone: props.keyState && props.keyState.has_key ? 'ok' : 'dim' },
-            props.keyState && props.keyState.has_key
-              ? (props.keyState.source === 'env' ? t('keyEnv') : t('keySaved'))
-              : '未配置 Key')),
+          h(Badge, { tone: hasKey ? 'ok' : 'warn' },
+            hasKey ? (props.keyState.source === 'env' ? t('keyEnv') : t('keySaved')) : t('noKey'))),
         h('p', { style: Object.assign({}, ui.p, { marginTop: 4 }) }, props.hint),
-        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 10 } },
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, marginTop: 10 } },
           h(Field, { label: t('provider') },
             h(Select, { value: channel.provider, options: providerOptions(props.providers), onChange: value => set('provider', value) })),
           h(Field, { label: t('relayUrl'), hint: t('relayUrlHint') },
@@ -2593,19 +2773,34 @@ window.__ModuleLoader__.load({
           h(Field, { label: t('relayPath'), hint: t('relayPathHint') },
             h(TextInput, { value: channel.path, onChange: value => set('path', value) })),
           h(Field, { label: t('modelId') },
-            h(TextInput, { value: channel.model, onChange: value => set('model', value) })),
+            h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+              h(TextInput, { value: channel.model, onChange: value => set('model', value) }),
+              h(Btn, { small: true, disabled: props.fetchingModels, onClick: props.onFetchModels, title: t('modelListHint') },
+                props.fetchingModels ? t('fetchingModels') : t('fetchModels')))),
+          props.modelOptions && props.modelOptions.length
+            ? h(Field, { label: t('modelList'), hint: `${props.modelOptions.length} ${t('modelListCount')}` },
+              h(Select, {
+                value: '',
+                options: [{ value: '', label: t('modelList') }]
+                  .concat(props.modelOptions.map(id => ({ value: id, label: id }))),
+                onChange: value => { if (value) props.onPickModel(value) },
+              }))
+            : null,
           h(Field, { label: t('authStyle') },
             h(Select, { value: channel.auth, options: authOptions(relay.auth_styles), onChange: value => set('auth', value) })),
+          h(Field, { label: t('modelsPath'), hint: t('modelsPathHint') },
+            h(TextInput, { value: channel.models_path || '', placeholder: '/models', onChange: value => set('models_path', value) })),
           h(Field, { label: props.timeoutLabel },
             h(TextInput, { value: String(channel.timeout_ms), onChange: value => set('timeout_ms', Number(value) || 0) })),
-          h(Field, { label: t('channelKey'), hint: props.keyState && props.keyState.has_key ? t('keySaved') : '' },
-            h(TextInput, { type: 'password', value: props.keyValue, placeholder: props.keyState && props.keyState.has_key ? '••••••••' : 'sk-…', onChange: props.onKey })),
+          h(Field, { label: t('channelKey'), hint: hasKey ? t('keySaved') : '' },
+            h(TextInput, { type: 'password', value: props.keyValue, placeholder: hasKey ? '••••••••' : 'sk-…', onChange: props.onKey })),
           props.extraFields || null),
-        h(Field, { label: t('headersJson'), hint: t('headersInvalid') },
+        h(Field, { label: t('headersJson'), hint: props.headersError ? t('headersInvalid') : t('headersHint'), style: { marginTop: 12 } },
           h(TextArea, { rows: 2, value: props.headersText, onChange: props.onHeaders })),
         h('div', { style: Object.assign({}, ui.row, { marginTop: 10 }) },
-          h(Btn, { disabled: props.busy || !(props.keyState && props.keyState.has_key), onClick: props.onTest },
-            props.busy ? t('working') : props.testLabel)))
+          h(Btn, { disabled: props.busy || !hasKey, onClick: props.onTest },
+            props.busy ? t('working') : props.testLabel),
+          hasKey ? null : h('span', { style: { fontSize: 11.5, color: C.dim } }, t('testNeedsKey'))))
     }
 
     function SettingsView(props) {
@@ -2614,9 +2809,14 @@ window.__ModuleLoader__.load({
       const [keys, setKeys] = useState({ has_key: false, vision: { has_key: false }, image: { has_key: false } })
       const [draftKey, setDraftKey] = useState({ vision: '', image: '' })
       const [headersText, setHeadersText] = useState({ vision: '{}', image: '{}' })
+      const [headersError, setHeadersError] = useState('')
       const [busy, setBusy] = useState('')
+      const [models, setModels] = useState({ vision: [], image: [] })
       const [error, setError] = useState('')
       const [notice, setNotice] = useState('')
+      const [tab, setTab] = useState('vision')
+      const baseline = useRef('')
+      const previousTab = useRef(0)
 
       const load = useCallback(async () => {
         try {
@@ -2628,6 +2828,7 @@ window.__ModuleLoader__.load({
             vision: JSON.stringify((data.settings.vision && data.settings.vision.headers) || {}, null, 0),
             image: JSON.stringify((data.settings.image && data.settings.image.headers) || {}, null, 0),
           })
+          baseline.current = JSON.stringify(data.settings)
           props.onSettings && props.onSettings(data)
           setError('')
         } catch (failure) {
@@ -2639,13 +2840,21 @@ window.__ModuleLoader__.load({
         load()
       }, [load])
 
+      const tabIndex = Math.max(0, SETTINGS_TABS.indexOf(tab))
+      useEffect(() => {
+        previousTab.current = tabIndex
+      }, [tabIndex])
+      const slide = `rep-slide-${tabIndex >= previousTab.current ? 'right' : 'left'} 260ms cubic-bezier(.22,.61,.36,1) both`
+
       if (!settings) {
         return h('div', { style: ui.row }, error ? h(Notice, { tone: 'bad' }, error) : h(Spinner), error ? null : h('span', null, t('loading')))
       }
 
       const patchShared = (field, value) => setSettings(current => Object.assign({}, current, { [field]: value }))
       const patchChannel = name => next => setSettings(current => Object.assign({}, current, { [name]: next }))
+      const dirty = baseline.current !== '' && JSON.stringify(settings) !== baseline.current
 
+      /* 请求头用输入即校验：非法 JSON 时立刻在卡片里标红，而不是等到点保存才报错。 */
       const parseHeaders = () => {
         const parsed = {}
         for (const name of ['vision', 'image']) {
@@ -2667,8 +2876,20 @@ window.__ModuleLoader__.load({
         }
         return parsed
       }
+      const updateHeaders = name => value => {
+        setHeadersText(current => Object.assign({}, current, { [name]: value }))
+        try {
+          const raw = String(value || '').trim()
+          const parsedValue = raw ? JSON.parse(raw) : {}
+          if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) throw new Error('object expected')
+          setHeadersError('')
+        } catch {
+          setHeadersError(name)
+        }
+      }
 
       const save = async () => {
+        if (busy) return
         setBusy('save')
         setError('')
         setNotice('')
@@ -2683,10 +2904,60 @@ window.__ModuleLoader__.load({
           if (draftKey.image) body.image_api_key = draftKey.image
           const data = await api('/settings', { method: 'PUT', body })
           setSettings(data.settings)
+          baseline.current = JSON.stringify(data.settings)
           setKeys({ has_key: data.has_key, vision: data.vision || { has_key: false }, image: data.image || { has_key: false } })
           setDraftKey({ vision: '', image: '' })
+          setHeadersText({
+            vision: JSON.stringify((data.settings.vision && data.settings.vision.headers) || {}, null, 0),
+            image: JSON.stringify((data.settings.image && data.settings.image.headers) || {}, null, 0),
+          })
+          setHeadersError('')
           setNotice(t('saved'))
           props.onSettings && props.onSettings(data)
+        } catch (failure) {
+          setError(`${t('errorPrefix')}${failure.message}`)
+        } finally {
+          setBusy('')
+        }
+      }
+
+      /* 一键拉取模型：用「当前正在编辑、可能还没保存」的地址与 Key 去问中转站，
+         拿到列表后由用户点选，避免手打模型名打错。 */
+      const fetchModels = async kind => {
+        if (busy) return
+        setBusy(`models:${kind}`)
+        setError('')
+        setNotice('')
+        try {
+          const channel = kind === 'image' ? settings.image : settings.vision
+          let headers = {}
+          const rawHeaders = String(headersText[kind] || '').trim()
+          if (rawHeaders) {
+            try {
+              headers = JSON.parse(rawHeaders)
+            } catch {
+              throw new Error(`${kind === 'image' ? t('imageCard') : t('visionCard')}: ${t('headersInvalid')}`)
+            }
+          }
+          if (!headers || typeof headers !== 'object' || Array.isArray(headers)) headers = {}
+          const data = await api('/settings/models', {
+            method: 'POST',
+            body: {
+              kind,
+              channel: {
+                provider: channel.provider,
+                base_url: channel.base_url,
+                path: channel.path,
+                auth: channel.auth,
+                headers,
+                models_path: channel.models_path || '',
+              },
+            },
+          })
+          const list = Array.isArray(data.models) ? data.models : []
+          setModels(current => Object.assign({}, current, { [kind]: list }))
+          if (list.length === 0) setError(`${kind === 'image' ? t('imageCard') : t('visionCard')}: ${t('modelListEmpty')}`)
+          else setNotice(`${kind === 'image' ? t('imageCard') : t('visionCard')} · ${list.length} ${t('modelListCount')} · ${data.ms || 0}ms`)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
@@ -2720,10 +2991,15 @@ window.__ModuleLoader__.load({
         keyState: keys.vision,
         onKey: value => setDraftKey(current => Object.assign({}, current, { vision: value })),
         headersText: headersText.vision,
-        onHeaders: value => setHeadersText(current => Object.assign({}, current, { vision: value })),
+        headersError: headersError === 'vision',
+        onHeaders: updateHeaders('vision'),
         timeoutLabel: t('timeout'),
         testLabel: t('testVision'),
         busy: busy === 'vision',
+        fetchingModels: busy === 'models:vision',
+        modelOptions: models.vision,
+        onFetchModels: () => fetchModels('vision'),
+        onPickModel: id => patchChannel('vision')(Object.assign({}, settings.vision, { model: id })),
         onTest: () => test('vision'),
       })
 
@@ -2738,10 +3014,15 @@ window.__ModuleLoader__.load({
         keyState: keys.image,
         onKey: value => setDraftKey(current => Object.assign({}, current, { image: value })),
         headersText: headersText.image,
-        onHeaders: value => setHeadersText(current => Object.assign({}, current, { image: value })),
+        headersError: headersError === 'image',
+        onHeaders: updateHeaders('image'),
         timeoutLabel: t('imageTimeout'),
         testLabel: t('testImage'),
         busy: busy === 'image',
+        fetchingModels: busy === 'models:image',
+        modelOptions: models.image,
+        onFetchModels: () => fetchModels('image'),
+        onPickModel: id => patchChannel('image')(Object.assign({}, settings.image, { model: id, edit_model: settings.image.edit_model || id })),
         onTest: () => test('image'),
         extraFields: [
           h(Field, { key: 'size', label: t('imageSize') },
@@ -2755,23 +3036,73 @@ window.__ModuleLoader__.load({
         ],
       })
 
-      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1000 } },
+      const sharedCard = h('div', { style: ui.card },
+        h('h3', { style: ui.h3 }, t('sharedCard')),
+        h('p', { style: Object.assign({}, ui.p, { marginTop: 4 }) }, t('sharedHint')),
+        h('div', { style: { marginTop: 12 } },
+          h(Check, { checked: settings.allow_localhost === true, onChange: value => patchShared('allow_localhost', value) }, t('allowLocalhost'))),
+        h('p', { style: Object.assign({}, ui.p, { marginTop: 12, fontSize: 11.5, lineHeight: 1.9 }) }, t('enumsHint')))
+
+      const panels = { vision: visionCard, image: imageCard, shared: sharedCard }
+      const tabLabels = { vision: t('visionShort'), image: t('imageShort'), shared: t('sharedCard') }
+
+      const tabStrip = h('div', {
+        style: {
+          position: 'relative', display: 'flex', padding: 3, borderRadius: 11,
+          border: `1px solid ${C.border}`, background: C.layer1, marginTop: 10,
+        },
+      },
+      h('div', {
+        style: {
+          position: 'absolute', top: 3, bottom: 3, left: 3,
+          width: `calc((100% - 6px) / ${SETTINGS_TABS.length})`,
+          borderRadius: 8, background: C.layer2, border: `1px solid ${C.border2}`,
+          transform: `translateX(${tabIndex * 100}%)`,
+          transition: 'transform 260ms cubic-bezier(.22,.61,.36,1)',
+          pointerEvents: 'none',
+        },
+      }),
+      SETTINGS_TABS.map((id, index) => h('button', {
+        key: id,
+        type: 'button',
+        onClick: () => setTab(id),
+        style: {
+          flex: '1 1 0', position: 'relative', zIndex: 1, padding: '7px 10px', borderRadius: 8,
+          border: 'none', background: 'transparent', cursor: 'pointer',
+          fontSize: 12.5, fontWeight: index === tabIndex ? 600 : 500,
+          color: index === tabIndex ? C.text : C.dim,
+          transition: 'color 180ms ease',
+        },
+      }, tabLabels[id])))
+
+      const actionBar = h('div', {
+        style: {
+          position: 'sticky', bottom: 0, zIndex: 4,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+          padding: '10px 12px', marginTop: 2, borderRadius: 12,
+          border: `1px solid ${C.border}`, background: C.layer1,
+          boxShadow: '0 -10px 24px -12px rgba(0,0,0,0.35)',
+        },
+      },
+      h('div', { style: Object.assign({}, ui.row, { gap: 6 }) },
+        h(Badge, { tone: keys.vision && keys.vision.has_key ? 'ok' : 'warn' },
+          `${t('visionShort')} · ${keys.vision && keys.vision.has_key ? t('keySaved') : t('noKey')}`),
+        h(Badge, { tone: keys.image && keys.image.has_key ? 'ok' : 'warn' },
+          `${t('imageShort')} · ${keys.image && keys.image.has_key ? t('keySaved') : t('noKey')}`),
+        dirty ? h(Badge, { tone: 'warn' }, t('unsaved')) : null),
+      h('div', { style: ui.row },
+        dirty ? h(Btn, { small: true, variant: 'ghost', disabled: busy !== '', onClick: () => { load() } }, t('discard')) : null,
+        h(Btn, { variant: 'primary', disabled: busy !== '', onClick: save }, busy === 'save' ? t('saving') : t('saveSettings'))))
+
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 880, overflowX: 'hidden' } },
         h('div', null,
           h('h2', { style: ui.h2 }, t('setTitle')),
           h('p', { style: ui.p }, t('setIntro'))),
+        tabStrip,
         error ? h(Notice, { tone: 'bad' }, error) : null,
         notice ? h(Notice, { tone: 'ok' }, notice) : null,
-        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12, alignItems: 'start' } },
-          visionCard,
-          imageCard),
-        h('div', { style: ui.cardTight },
-          h('strong', { style: { fontSize: 13 } }, t('sharedCard')),
-          h('span', { style: { fontSize: 11.5, color: C.dim, marginLeft: 8 } }, t('sharedHint')),
-          h('div', { style: { marginTop: 10 } },
-            h(Check, { checked: settings.allow_localhost === true, onChange: value => patchShared('allow_localhost', value) }, t('allowLocalhost')))),
-        h('div', { style: ui.row },
-          h(Btn, { variant: 'primary', disabled: busy !== '', onClick: save }, busy === 'save' ? t('saving') : t('saveSettings'))),
-        h('p', { style: Object.assign({}, ui.p, { fontSize: 11.5 }) }, t('enumsHint')))
+        h('div', { key: tab, style: { animation: slide } }, panels[tab]),
+        actionBar)
     }
     // ==== 90-app.js =======================================================
 
@@ -2901,7 +3232,7 @@ window.__ModuleLoader__.load({
       ]
 
       let body = null
-      if (view === 'home') body = h(HomeView, { settings, onCreated })
+      if (view === 'home') body = h(HomeView, { settings, onCreated, notify })
       else if (view === 'history') body = h(HistoryView, { onOpen: openTask })
       else if (view === 'settings') body = h(SettingsView, { onSettings: applySettings })
       else if (view === 'task') {
@@ -2916,7 +3247,8 @@ window.__ModuleLoader__.load({
       return h('div', {
         style: {
           display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px 40px',
-          background: C.bg, color: C.text, minHeight: '100%', boxSizing: 'border-box',
+          background: C.bg, color: C.text, minHeight: '100%', height: '100%',
+          overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box',
         },
       },
       h('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' } },

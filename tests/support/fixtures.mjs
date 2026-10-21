@@ -81,6 +81,16 @@ const sceneJson = {
   risks: [],
 }
 
+const productText = `**1. 商品名称：**
+测试保温杯 500ml
+
+**2. 核心卖点：**
+316 内胆；24 小时保温
+
+**3. 规格参数：**
+- **（1）颜色：** 哑光黑
+- **（2）外观：** 圆柱形直身杯体`
+
 export async function buildSnapshots() {
   const root = await mkdtemp(path.join(tmpdir(), 'replica-render-'))
   process.env.DSH_PROFILE_DIR = root
@@ -101,14 +111,24 @@ export async function buildSnapshots() {
   }
   const dataUrl = (w, h, rgba) => `data:image/png;base64,${encodePng(solid(w, h, rgba)).toString('base64')}`
 
-  globalThis.fetch = async url => {
+  globalThis.fetch = async (url, options) => {
     const target = String(url)
     if (target.includes('/chat/completions')) {
+      // 视觉通道上有两种提示词：商品信息提取 / 场景分析。
+      const prompt = (() => {
+        try {
+          const raw = options && options.body
+          return JSON.stringify(typeof raw === 'string' ? JSON.parse(raw) : raw)
+        } catch {
+          return ''
+        }
+      })()
+      const content = prompt.includes('专业的电商产品信息提取专家') ? productText : JSON.stringify(sceneJson)
       return {
         ok: true,
         status: 200,
         headers: { get: () => null },
-        arrayBuffer: async () => Buffer.from(JSON.stringify({ choices: [{ message: { content: JSON.stringify(sceneJson) } }] })),
+        arrayBuffer: async () => Buffer.from(JSON.stringify({ choices: [{ message: { content } }] })),
       }
     }
     if (target.includes('/images/generations')) {
@@ -163,6 +183,9 @@ export async function buildSnapshots() {
   })
   if (created.status !== 200) throw new Error(`fixture create failed: ${JSON.stringify(created.body)}`)
   const id = created.body.task.id
+
+  const described = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${id}/describe`, {}, id, 'describe')
+  if (described.status !== 200) throw new Error(`fixture describe failed: ${JSON.stringify(described.body)}`)
 
   const analyzed = await call(handlers.action, 'POST', `/api/ai-replica/tasks/${id}/analyze`, {}, id, 'analyze')
   if (analyzed.status !== 200) throw new Error(`fixture analyze failed: ${JSON.stringify(analyzed.body)}`)
@@ -235,6 +258,7 @@ export async function buildSnapshots() {
     root,
     id,
     created: created.body,
+    described: described.body,
     analyzed: analyzed.body,
     reviewed: reviewed.body,
     masked: masked.body,

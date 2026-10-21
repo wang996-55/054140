@@ -68,6 +68,16 @@
           }
           const data = await api('/tasks', { method: 'POST', body: payload })
           props.onCreated(data)
+          // 上传商品图后立刻调用视觉模型生成商品描述词（名称 / 卖点 / 规格）。
+          // 失败不阻断流程：任务页会显示原因，可以重试或手填。
+          if (images.product) {
+            try {
+              const described = await api(`/describe?id=${encodeURIComponent(data.task.id)}`, { method: 'POST', body: {} })
+              props.onCreated(described)
+            } catch (failure) {
+              props.notify(`${t('profileDescribeFailed')}${failure.message}`)
+            }
+          }
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
@@ -75,7 +85,7 @@
         }
       }
 
-      const upload = (kind, label) => h('div', null,
+      const upload = (kind, label, hint) => h('div', null,
         h('label', { style: ui.label }, label),
         h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
           images[kind]
@@ -110,7 +120,8 @@
                 variant: 'ghost',
                 onClick: () => setImages(current => Object.assign({}, current, { [kind]: null })),
               }, t('removeImage'))
-              : null)))
+              : null),
+        hint ? h('p', { style: Object.assign({}, ui.p, { marginTop: 8, fontSize: 11.5 }) }, hint) : null))
 
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 980 } },
         h('div', null,
@@ -126,7 +137,7 @@
           h('div', { style: ui.card },
             h('h3', { style: ui.h3 }, t('productTitle')),
             h('p', { style: Object.assign({}, ui.p, { marginBottom: 10 }) }, t('productHint')),
-            upload('product', t('productTitle')),
+            upload('product', t('productTitle'), t('profileAutoHint')),
             h('div', { style: { marginTop: 12 } },
               h(Check, {
                 checked: form.creative_mode === true,

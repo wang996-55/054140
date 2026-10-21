@@ -24,12 +24,21 @@ window.__ModuleLoader__.load({
     const STAGES = ['created', 'analyzing', 'scene_review', 'mask_review', 'background_review', 'editing', 'exporting', 'done']
     const ACTIVE_STATES = ['analyzing', 'exporting']
 
-    // One keyframe rule, injected once; the tokens handle every colour.
+    // One keyframe block, injected once; the tokens handle every colour.
     try {
       if (!document.getElementById('ai-replica-style')) {
         const style = document.createElement('style')
         style.id = 'ai-replica-style'
-        style.textContent = '@keyframes rep-spin{to{transform:rotate(360deg)}}'
+        style.textContent = [
+          '@keyframes rep-spin{to{transform:rotate(360deg)}}',
+          '@keyframes rep-slide-right{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:translateX(0)}}',
+          '@keyframes rep-slide-left{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:translateX(0)}}',
+          '@keyframes rep-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}',
+          '.rep-pane-scroll{scrollbar-width:thin;overscroll-behavior:contain}',
+          '.rep-pane-scroll::-webkit-scrollbar{width:10px;height:10px}',
+          '.rep-pane-scroll::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:8px;border:3px solid transparent;background-clip:content-box}',
+          '.rep-pane-scroll::-webkit-scrollbar-track{background:transparent}',
+        ].join('')
         document.head.appendChild(style)
       }
     } catch {

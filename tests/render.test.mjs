@@ -278,7 +278,15 @@ globalThis.URL.createObjectURL = () => 'blob:stub'
 globalThis.URL.revokeObjectURL = () => {}
 globalThis.fetch = async (url, options) => {
   const target = String(url).split('?')[0]
-  fetchLog.push({ url: String(url), method: (options && options.method) || 'GET' })
+  const entry = { url: String(url), method: (options && options.method) || 'GET' }
+  if (options && typeof options.body === 'string') {
+    try {
+      entry.body = JSON.parse(options.body)
+    } catch {
+      entry.body = options.body
+    }
+  }
+  fetchLog.push(entry)
   const key = Object.keys(canned).find(suffix => target.endsWith(suffix))
   const payload = key ? canned[key] : { ok: true }
   return {
@@ -375,13 +383,17 @@ function renderNode(node, depth, sink, path) {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
   if (Array.isArray(node)) return node.map((child, index) => renderNode(child, depth + 1, sink, `${path}.${index}`)).join(' ')
   if (typeof node !== 'object') return ''
-  if (depth > 14) return ''
+  // Only a runaway guard: real trees reach ~20 levels (card → grid → field →
+  // row → button). A tight limit silently truncated the settings card, which is
+  // exactly how a missing button could hide from this suite.
+  if (depth > 40) return ''
   const type = node.type
   if (typeof type === 'string') return renderNode(node.children, depth + 1, sink, path)
   if (typeof type !== 'function') return renderNode(node.children, depth + 1, sink, path)
 
   const name = type.name || 'anonymous'
   const key = `${name}@${path}`
+  if (sink.nodes) sink.nodes.push(node)
   if (!slotStore.has(key)) slotStore.set(key, { list: [], index: 0, effects: [] })
   const state = slotStore.get(key)
   state.index = 0
@@ -409,9 +421,11 @@ function renderNode(node, depth, sink, path) {
 async function render(component, props, rounds = 6) {
   const errors = []
   let text = ''
+  let nodes = []
   for (let round = 0; round < rounds; round += 1) {
-    const sink = { errors: [], effects: [] }
+    const sink = { errors: [], effects: [], nodes: [] }
     text = renderNode({ type: component, props: props || {}, children: [] }, 0, sink, 'root')
+    nodes = sink.nodes
     errors.push(...sink.errors)
     if (sink.errors.length > 0) break
     for (const item of sink.effects) {
@@ -425,7 +439,7 @@ async function render(component, props, rounds = 6) {
     await flush()
     await flush()
   }
-  return { text, errors }
+  return { text, errors, nodes }
 }
 
 const dryRun = async (name, component, props) => {
@@ -441,6 +455,9 @@ canned = {
   '/api/ai-replica/health': { ok: true, version: '2.0.0', has_key: true, source: 'secrets', cutout: 'local-browser', compositor: 'host-node' },
   '/api/ai-replica/settings': fixtures.settings,
   '/api/ai-replica/tasks': { ok: true, total: fixtures.history.total, items: fixtures.history.items },
+  '/api/ai-replica/settings/models': { ok: true, kind: 'vision', count: 2, models: ['pick-a', 'pick-b'], ms: 4 },
+  '/api/ai-replica/describe': fixtures.described,
+  '/api/ai-replica/product-profile': fixtures.described,
 }
 const notify = () => {}
 const noop = async () => {}
@@ -489,6 +506,96 @@ const settingsView = await dryRun('settings', internals.SettingsView, {
   notify,
 })
 check('settings shows the relay fields', settingsView.text.includes('中转') || settingsView.text.includes('模型'), settingsView.text.slice(0, 200))
+
+const named = (list, name) => list.filter(node => node && typeof node.type === 'function' && node.type.name === name)
+
+/* 商品信息（商品描述词）：上传商品图后由视觉模型提取，卡片要显示结果，
+   「重新提取」要真的调用 Host，改完要能保存。 */
+const sceneProps = {
+  snapshot: fixtures.reviewed,
+  settings: fixtures.settings,
+  notify,
+  onChanged: () => {},
+}
+slotStore.clear()
+const sceneRender = await render(internals.SceneStage, sceneProps)
+check('scene stage renders the product card', sceneRender.errors.length === 0, errorTexts(sceneRender.errors))
+check('product card shows the extracted name', sceneRender.text.includes('测试保温杯 500ml'), sceneRender.text.slice(0, 200))
+check('product card shows the colour', sceneRender.text.includes('哑光黑'), sceneRender.text.slice(0, 300))
+check('product card labels the three sections', ['1. 商品名称', '2. 核心卖点', '3. 规格参数'].every(label => sceneRender.text.includes(label)), sceneRender.text.slice(0, 300))
+const sceneButtons = named(sceneRender.nodes, 'Btn')
+const redescribe = sceneButtons.find(node => node.props && node.props.children === '重新提取')
+check('product card exposes a re-extract button', Boolean(redescribe && typeof redescribe.props.onClick === 'function'), sceneButtons.map(node => node.props && node.props.children))
+fetchLog.length = 0
+let describeFailure = null
+try {
+  await redescribe.props.onClick()
+  await flush()
+  await flush()
+} catch (error) {
+  describeFailure = error
+}
+check('re-extract did not throw', describeFailure === null, describeFailure && describeFailure.message)
+const describeRequest = fetchLog.find(entry => entry.method === 'POST' && entry.url.includes('/describe'))
+check('re-extract calls the host describe route', Boolean(describeRequest && describeRequest.url.includes(fixtures.id)), fetchLog)
+
+/* Interaction: the save button must really produce a two-channel PUT, and the
+   fetch-models button must really ask the Host. A render that merely "looks
+   fine" is what lets a broken settings page ship. */
+slotStore.clear()
+const settingsRender = await render(internals.SettingsView, { onSettings: () => {}, notify })
+check('settings renders for interaction', settingsRender.errors.length === 0, errorTexts(settingsRender.errors))
+check('settings shows the three tab labels', ['视觉通道', '生图通道', '全局'].every(label => settingsRender.text.includes(label)), settingsRender.text.slice(0, 200))
+const buttons = named(settingsRender.nodes, 'Btn')
+const saveButton = buttons.find(node => node.props && node.props.variant === 'primary')
+check('settings save button exists', Boolean(saveButton && typeof saveButton.props.onClick === 'function'), buttons.map(node => node.props && node.props.children))
+
+let saveFailure = null
+fetchLog.length = 0
+try {
+  await saveButton.props.onClick()
+  await flush()
+  await flush()
+} catch (error) {
+  saveFailure = error
+}
+const putRequest = fetchLog.find(entry => entry.method === 'PUT' && entry.url.includes('/settings'))
+check('settings save did not throw', saveFailure === null, saveFailure && saveFailure.message)
+check('settings save issued a PUT', Boolean(putRequest), fetchLog)
+check('settings save sends both channels', Boolean(putRequest
+  && putRequest.body.settings.vision
+  && putRequest.body.settings.image
+  && typeof putRequest.body.settings.vision.base_url === 'string'
+  && typeof putRequest.body.settings.image.base_url === 'string'), putRequest && Object.keys(putRequest.body))
+check('settings save never sends a key', Boolean(putRequest
+  && !('api_key' in putRequest.body)
+  && !('vision_api_key' in putRequest.body)
+  && !('image_api_key' in putRequest.body)), putRequest && Object.keys(putRequest.body))
+
+/* One-click model fetch: the button must ask the Host, and the returned list
+   must land in the form so nobody has to type a model id from memory. */
+const fetchModelsButton = buttons.find(node => node.props && node.props.children === '拉取模型')
+check('settings exposes a fetch-models button', Boolean(fetchModelsButton && typeof fetchModelsButton.props.onClick === 'function'), buttons.map(node => node.props && node.props.children))
+fetchLog.length = 0
+let modelsFailure = null
+try {
+  await fetchModelsButton.props.onClick()
+  await flush()
+  await flush()
+} catch (error) {
+  modelsFailure = error
+}
+const modelsRequest = fetchLog.find(entry => entry.method === 'POST' && entry.url.includes('/settings/models'))
+check('fetch models did not throw', modelsFailure === null, modelsFailure && modelsFailure.message)
+check('fetch models calls the host route', Boolean(modelsRequest), fetchLog)
+check('fetch models sends the channel, not a key', Boolean(modelsRequest
+  && modelsRequest.body.kind === 'vision'
+  && modelsRequest.body.channel
+  && typeof modelsRequest.body.channel.base_url === 'string'
+  && !('api_key' in modelsRequest.body)
+  && !('vision_api_key' in modelsRequest.body)), modelsRequest && modelsRequest.body)
+const afterModels = await render(internals.SettingsView, { onSettings: () => {}, notify }, 3)
+check('fetched models appear as a picker', afterModels.text.includes('pick-a') || afterModels.text.includes('从列表中选择'), afterModels.text.slice(0, 300))
 
 for (const state of ['analyzing', 'remote_outcome_unknown', 'failed', 'cancelled', 'mask_rejected']) {
   const fixture = state === 'mask_rejected'

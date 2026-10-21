@@ -1,6 +1,6 @@
 {
   "name": "@local/ai-replica",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "AI 爆款图复刻（插件内版）：参考图视觉分析 → 人工场景审核 → 本地抠图与蒙版审核 → 无商品背景生成与审核 → Canvas 参数编辑 → Host 端高清合成导出 → 人工验收。全部在 Harness 插件页面内运行，无需浏览器外跳。",
@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
-    "test": "node tests/schema.test.mjs && node tests/relay.test.mjs && node tests/image.test.mjs && node tests/host.test.mjs && node tests/host-apply.test.mjs && node tests/client.test.mjs && node tests/render.test.mjs",
+    "test": "node tests/schema.test.mjs && node tests/product.test.mjs && node tests/relay.test.mjs && node tests/image.test.mjs && node tests/host.test.mjs && node tests/host-apply.test.mjs && node tests/client.test.mjs && node tests/render.test.mjs",
     "release": "node scripts/release.mjs"
   },
   "dsh": {

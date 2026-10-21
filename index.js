@@ -8,6 +8,7 @@
  *   GET    /settings               provider settings + enums/labels for the forms
  *   PUT    /settings               save settings (the key goes to secrets.json)
  *   POST   /settings/test          one explicit, paid relay test
+ *   POST   /settings/models        pull the model list from one channel's relay
  *   GET    /tasks                  history list
  *   POST   /tasks                  create a task (form + reference/product images)
  *   GET    /tasks/:id              full task snapshot (the page polls this)
@@ -131,7 +132,11 @@ function configureRequestTrust(ctx) {
   }
 }
 
-const TASK_ACTIONS = ['analyze', 'scene-review', 'cutout', 'mask', 'compatibility', 'background', 'composition', 'export', 'accept', 'cancel']
+const TASK_ACTIONS = [
+  'describe', 'product-profile', 'product-skip',
+  'analyze', 'scene-review', 'cutout', 'mask', 'compatibility', 'background', 'composition', 'export', 'accept',
+  'cancel',
+]
 
 function taskIdOf(req) {
   const url = new URL(req.url, 'http://127.0.0.1')
@@ -180,6 +185,7 @@ export function apply(ctx) {
       { kind: 'exact', path: `${PREFIX}/health`, handler: handlers.health },
       { kind: 'exact', path: `${PREFIX}/settings`, handler: handlers.settings },
       { kind: 'exact', path: `${PREFIX}/settings/test`, handler: handlers.test },
+      { kind: 'exact', path: `${PREFIX}/settings/models`, handler: handlers.models },
       { kind: 'exact', path: `${PREFIX}/file`, handler: handlers.file },
       { kind: 'exact', path: `${PREFIX}/reveal`, handler: handlers.reveal },
       { kind: 'exact', path: `${PREFIX}/tasks`, handler: handlers.tasks },

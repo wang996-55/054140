@@ -15,6 +15,7 @@ import {
   defaultSettings, normalizeProviderSettings, migrateLegacySettings,
   resolveChannelKey, keyState, channelHeaders, channelUrl, channelUrlForModel,
   buildVisionRequest, buildImageRequest, callVision, generateImage, testProvider,
+  listModels, parseModelList, modelListUrl,
   RelayError,
 } from '../lib/relay.js'
 
@@ -264,6 +265,58 @@ try {
   check('testProvider needs the matching key', false, 'accepted')
 } catch (error) {
   check('testProvider needs the matching key', error.code === 'provider-missing', error.code)
+}
+
+// --------------------------------------------------------------- model list
+/* 一键拉取模型：地址从 base_url + models_path 推出，鉴权复用通道配置，
+   回包容错 OpenAI / Gemini / 套壳三种形状。 */
+const modelsStub = stubFetch(() => respond({
+  data: [
+    { id: 'gpt-4o-mini' },
+    { id: 'gpt-4o' },
+    { id: 'gpt-4o-mini' },
+    { name: 'models/gemini-2.0-flash' },
+    {},
+    null,
+  ],
+}))
+const modelsResult = await listModels({
+  channel: channel({ base_url: 'https://relay.test/v1', models_path: '' }),
+  apiKey: 'sk-vision',
+  fetchImpl: modelsStub.fetchImpl,
+})
+check('model list hits <base>/models', modelsStub.calls[0].url === 'https://relay.test/v1/models', modelsStub.calls[0].url)
+check('model list uses GET', modelsStub.calls[0].method === 'GET', modelsStub.calls[0].method)
+check('model list sends the channel key', String(modelsStub.calls[0].headers.authorization).includes('sk-vision'), modelsStub.calls[0].headers)
+check('model list dedupes, sorts and strips the models/ prefix',
+  JSON.stringify(modelsResult.models) === JSON.stringify(['gemini-2.0-flash', 'gpt-4o', 'gpt-4o-mini']), modelsResult.models)
+
+const customModels = stubFetch(() => respond({ models: [{ name: 'models/a' }, { name: 'b' }] }))
+const customResult = await listModels({
+  channel: channel({ base_url: 'https://g.test/v1beta', models_path: '/models?pageSize=50' }),
+  apiKey: 'sk-g',
+  fetchImpl: customModels.fetchImpl,
+})
+check('model list honours models_path with a query string',
+  customModels.calls[0].url === 'https://g.test/v1beta/models?pageSize=50', customModels.calls[0].url)
+check('model list parses the gemini shape', JSON.stringify(customResult.models) === JSON.stringify(['a', 'b']), customResult.models)
+
+const nested = parseModelList({ result: { data: [{ id: 'x' }] }, output: { models: [{ name: 'models/y' }] } })
+check('parseModelList reads nested result/output', JSON.stringify(nested) === JSON.stringify(['x', 'y']), nested)
+check('parseModelList survives a non-list payload', parseModelList({ ok: true }).length === 0, parseModelList({ ok: true }))
+check('models_path defaults to empty', defaultSettings().vision.models_path === '' && defaultSettings().image.models_path === '', defaultSettings().image.models_path)
+
+try {
+  await listModels({ channel: channel({ base_url: 'https://relay.test/v1' }), apiKey: 'sk', fetchImpl: stubFetch(() => respond({ error: 'nope' }, 401)).fetchImpl })
+  check('model list maps 401 to provider-auth', false, 'accepted')
+} catch (error) {
+  check('model list maps 401 to provider-auth', error.code === 'provider-auth', error.code)
+}
+try {
+  await listModels({ channel: channel({ base_url: 'https://relay.test/v1' }), apiKey: 'sk', fetchImpl: stubFetch(() => respond('<html>not json</html>')).fetchImpl })
+  check('model list rejects a non-JSON body', false, 'accepted')
+} catch (error) {
+  check('model list rejects a non-JSON body', error.code === 'provider-error', error.code)
 }
 
 console.log(`PASS ${pass} / FAIL ${fail}`)

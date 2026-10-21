@@ -8,6 +8,88 @@
       return list.map(value => ({ value, label: table[value] || value }))
     }
 
+    /* 商品信息（商品描述词）：上传商品图后由视觉模型按固定顺序提取
+       1 商品名称 / 2 核心卖点 / 3 规格参数（颜色、外观）。可以改，也可以重新提取；
+       这里的内容会进入场景分析与背景提示词。 */
+    function ProductCard(props) {
+      const product = (props.snapshot && props.snapshot.product) || {}
+      const profile = product.profile || {}
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const [open, setOpen] = useState(!product.profile)
+      const [draft, setDraft] = useState(() => ({
+        name: profile.name && profile.name !== '未提供' ? profile.name : '',
+        selling_points: (profile.selling_points || []).join('；'),
+        color: profile.color && profile.color !== '未提供' ? profile.color : '',
+        appearance: profile.appearance && profile.appearance !== '未提供' ? profile.appearance : '',
+      }))
+      useEffect(() => {
+        setDraft({
+          name: profile.name && profile.name !== '未提供' ? profile.name : '',
+          selling_points: (profile.selling_points || []).join('；'),
+          color: profile.color && profile.color !== '未提供' ? profile.color : '',
+          appearance: profile.appearance && profile.appearance !== '未提供' ? profile.appearance : '',
+        })
+      }, [product.created_at, product.source, profile.name, profile.color, profile.appearance])
+
+      if (!product.has_product_image) return null
+
+      const run = async (label, action, body, method) => {
+        setBusy(true)
+        setError('')
+        try {
+          const data = await taskApi(props.snapshot.task.id, action, { method: method || 'POST', body: body || {} })
+          props.onChanged(data)
+          if (props.notify) props.notify('ok', t('profileSaved'))
+        } catch (failure) {
+          setError(`${t('errorPrefix')}${failure.message}`)
+        } finally {
+          setBusy(false)
+        }
+      }
+
+      const describe = () => run('describe', 'describe')
+      const save = () => run('save', 'product-profile', {
+        profile: {
+          name: draft.name,
+          selling_points: draft.selling_points.split(/[；;、,，\n]+/).map(item => item.trim()).filter(Boolean).slice(0, 3),
+          color: draft.color,
+          appearance: draft.appearance,
+        },
+      }, 'PUT')
+
+      const field = (label, key, rows) => h(Field, { label },
+        rows
+          ? h(TextArea, { value: draft[key], rows, onChange: value => setDraft(current => Object.assign({}, current, { [key]: value })) })
+          : h(TextInput, { value: draft[key], onChange: value => setDraft(current => Object.assign({}, current, { [key]: value })) }))
+
+      const hasProfile = Boolean(product.profile)
+      return h('div', { style: Object.assign({}, ui.card, { borderLeft: `3px solid ${C.brand}` }) },
+        h('div', { style: Object.assign({}, ui.row, { justifyContent: 'space-between', alignItems: 'flex-start' }) },
+          h('div', null,
+            h('h3', { style: ui.h3 }, t('profileTitle')),
+            h('p', { style: ui.p }, hasProfile ? t('profileIntro') : t('profileEmpty'))),
+          h('div', { style: ui.row },
+            product.source ? h(Badge, { tone: 'dim' }, product.source === 'manual' ? t('profileManual') : t('profileFromVision')) : null,
+            h(Btn, { small: true, disabled: busy, title: t('costVision'), onClick: describe }, busy ? t('profileDescribing') : t('profileRedescribe')),
+            h(Btn, { small: true, onClick: () => setOpen(value => !value) }, open ? t('profileCollapse') : t('profileEdit')))),
+        error ? h('div', { style: { marginTop: 10 } }, h(Notice, { tone: 'bad' }, error)) : null,
+        open
+          ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 14 } },
+            field(t('profileName'), 'name'),
+            field(t('profilePoints'), 'selling_points'),
+            field(t('profileColor'), 'color'),
+            field(t('profileAppearance'), 'appearance'),
+            h('div', { style: Object.assign({}, ui.row, { marginTop: 4 }) },
+              h(Btn, { variant: 'primary', small: true, disabled: busy, onClick: save }, t('profileSave'))))
+          : h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 12 } },
+            h('div', null, h('div', { style: ui.label }, t('profileName')), h('div', { style: ui.value }, draft.name || t('notProvided'))),
+            h('div', null, h('div', { style: ui.label }, t('profilePoints')), h('div', { style: ui.value }, draft.selling_points || t('notProvided'))),
+            h('div', null, h('div', { style: ui.label }, t('profileColor')), h('div', { style: ui.value }, draft.color || t('notProvided'))),
+            h('div', null, h('div', { style: ui.label }, t('profileAppearance')), h('div', { style: ui.value }, draft.appearance || t('notProvided')))),
+        h('p', { style: Object.assign({}, ui.p, { marginTop: 10, fontSize: 11.5 }) }, t('profileHint')))
+    }
+
     function SceneStage(props) {
       const { snapshot, settings } = props
       const analysis = snapshot.scene.analysis
@@ -74,13 +156,15 @@
       }
 
       if (!analysis) {
-        return h('div', { style: Object.assign({}, ui.card, { display: 'flex', flexDirection: 'column', gap: 12 }) },
-          h('h3', { style: ui.h3 }, t('step2')),
-          h('p', { style: ui.p }, t('sceneIntro')),
-          error ? h(Notice, { tone: 'bad' }, error) : null,
-          h('div', { style: ui.row },
-            h(Btn, { variant: 'primary', disabled: busy, onClick: runAnalysis }, busy ? t('analyzing') : t('analyze')),
-            h('span', { style: { fontSize: 12, color: C.dim } }, t('costVision'))))
+        return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+          h(ProductCard, { snapshot, notify: props.notify, onChanged: props.onChanged }),
+          h('div', { style: Object.assign({}, ui.card, { display: 'flex', flexDirection: 'column', gap: 12 }) },
+            h('h3', { style: ui.h3 }, t('step2')),
+            h('p', { style: ui.p }, t('sceneIntro')),
+            error ? h(Notice, { tone: 'bad' }, error) : null,
+            h('div', { style: ui.row },
+              h(Btn, { variant: 'primary', disabled: busy, onClick: runAnalysis }, busy ? t('analyzing') : t('analyze')),
+              h('span', { style: { fontSize: 12, color: C.dim } }, t('costVision')))))
       }
 
       const unknownPaths = ['camera.angle', 'camera.expected_product_view', 'lighting.direction', 'support_surface.type', 'placement.preferred_region']
@@ -92,6 +176,7 @@
       const canReanalyze = budget.vision_calls < budget.max_vision_calls
 
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        h(ProductCard, { snapshot, notify: props.notify, onChanged: props.onChanged }),
         h('div', { style: ui.card },
           h('div', { style: Object.assign({}, ui.row, { justifyContent: 'space-between' }) },
             h('div', null,

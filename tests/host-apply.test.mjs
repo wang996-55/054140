@@ -48,7 +48,9 @@ const ctx = {
 }
 
 plugin.apply(ctx)
-check('routes registered', routes.length === 17, routes.length)
+check('routes registered', routes.length === 21, routes.length)
+check('model list route registered', routes.some(item => item.path === '/api/ai-replica/settings/models'), routes.map(item => item.path))
+check('product describe route registered', routes.some(item => item.path === '/api/ai-replica/describe'), routes.map(item => item.path))
 check('flat task route', routes.some(route => route.kind === 'exact' && route.path === '/api/ai-replica/task'))
 check('flat action routes', ['analyze', 'scene-review', 'mask', 'background', 'export'].every(name => routes.some(route => route.path === `/api/ai-replica/${name}`)))
 check('no prefix routes', routes.every(route => route.kind === 'exact'), routes.map(route => route.kind))

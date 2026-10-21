@@ -1,4 +1,4 @@
-# 爆款图复刻 · Replica Studio（`@local/ai-replica` 2.1.0）
+# 爆款图复刻 · Replica Studio（`@local/ai-replica` 2.3.0）
 
 按《AI_爆款图复刻_开发文档_V4.1》重写的 Harness 插件版：**整条流水线都在插件页面内跑完**，不再打开浏览器、不再起第二个端口、不依赖 Python / Konva / npm 依赖。
 
@@ -54,27 +54,29 @@
 
 ## 首次配置
 
-插件右上角 →「设置」，页面分成**三张卡片**：视觉通道、生图通道、共享项。两条通道各自独立，可以指向不同中转站、用不同账号与 Key。
+插件右上角 →「设置」，页面是**三个页签**：视觉通道、生图通道、全局。切换时内容横向滑入、页签高亮块跟着滑动；底部保存条常驻，不会因为表单变长而点不到。两条通道各自独立，可以指向不同中转站、用不同账号与 Key。
 
 | 字段 | 说明 |
 | --- | --- |
 | 协议（视觉） | `openai_chat` / `openai_responses` / `anthropic` / `gemini` —— 中转站兼容哪种就选哪种 |
 | 协议（生图） | `openai_images` / `openai_chat`（部分中转站用 chat 出图）/ `gemini` |
 | 中转站地址 | 每条通道各填一个，例如 `https://relay-a.example.com/v1`；可填**完整 URL**（含查询串，适合把 key 放 query 的中转站）；`{model}` 占位符会被展开 |
+| 模型 | 每条通道各一个；旁边有「拉取模型」按钮，按当前地址与 Key 读中转站的 `/models`，点选即填入，不用手打模型名 |
 | 请求路径 | 相对路径（默认 `<base_url>/chat/completions`、`/images/generations`）或完整 URL |
-| 模型 | 每条通道各一个；生图另有「编辑模型 / 编辑路径」用于参考图改图（multipart `/images/edits`） |
+| 模型列表路径 | 可选，留空即 `<base_url>/models`；个别中转站换路径时填这里 |
 | 认证方式 | `bearer`（`Authorization: Bearer`）/ `x-api-key`（Anthropic 系）/ `api-key`（Azure 系）/ `google`（`?key=`）/ `none` |
 | 额外请求头 | JSON，例如 `{"X-Relay-Token":"..."}`，与认证头合并，适配需要二次鉴权的中转站 |
 | API Key | 视觉 Key 与生图 Key **分开保存**，互不串用；保存后写入 `secrets.json`，页面只显示"已保存" |
 | 超时 | 视觉默认 120s，生图默认 300s；超时即 `provider-timeout-unknown`（可能已计费，不自动重试） |
 | 允许本机地址 | `allow_localhost` 默认关闭；SSRF 防护要求显式开启才允许 `127.0.0.1` 这类本地中转 |
 | 测试按钮 | 每条通道各自一个，**真实消耗一次请求**，必须二次确认 |
+| 保存 | 底部常驻「保存设置」；有未保存改动时会显示提示，并可一键放弃修改 |
 
 Key 也可用环境变量给出，优先级从高到低：`REPLICA_VISION_API_KEY` / `REPLICA_IMAGE_API_KEY` → `REPLICA_API_KEY` → `OPENAI_API_KEY` → `secrets.json`。页面显示的 `vision.has_key` / `image.has_key` 会标注来源是环境变量还是已保存的 Key。
 
 ## 使用流程
 
-1. **新建复刻**：参考图（必填）+ 商品图（保真模式必填）+ 比例/边长/生成次数上限。
+1. **新建复刻**：参考图（必填）+ 商品图（保真模式必填）+ 比例/边长/生成次数上限。提交后立即调用视觉模型提取**商品信息**：1 商品名称 → 2 核心卖点（最多 3 项）→ 3 规格参数（颜色、外观）。模型没依据的字段写「未提供」，资料互相矛盾写「信息冲突」，可以手动改写或重新提取；商品信息会一起进入场景分析与背景提示词。
 2. **场景审核**：看模型结论、改错的字段、勾选「已逐项核对」以及每个 `unknown` 的确认。
 3. **抠图与蒙版**：自动估算 → 画笔补回/擦除 → 扩张/收缩/羽化 → 确认。
 4. **背景**：可生成（受 `background_count` 预算限制）或上传干净背景；三项检查后确认。
@@ -118,7 +120,7 @@ node tests/host.test.mjs   # Host 全流程（假中转站，含超时/401/预�
 node tests/host-apply.test.mjs # 路由注册、Origin/Host 信任、销毁
 node tests/client.test.mjs # Client 半加载与 Slot 注册
 node tests/render.test.mjs # 无浏览器渲染全部阶段（迷你渲染器 + 真实 Host 快照）
-pnpm release               # 上面全部 + 打包 dist/ai-replica-2.1.0.zip
+pnpm release               # 上面全部 + 打包 dist/ai-replica-2.3.0.zip
 ```
 
 Client 源码是按顺序拼接的片段：`src/client/00-header.js` → `10-core.js`（i18n / API / UI 原语）→ 各阶段 → `90-app.js`（外壳与 Slot 注册）。**改片段后必须 `pnpm build:client`**，`client.js` 是生成物。

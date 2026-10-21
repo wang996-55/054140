@@ -125,7 +125,7 @@
       ]
 
       let body = null
-      if (view === 'home') body = h(HomeView, { settings, onCreated })
+      if (view === 'home') body = h(HomeView, { settings, onCreated, notify })
       else if (view === 'history') body = h(HistoryView, { onOpen: openTask })
       else if (view === 'settings') body = h(SettingsView, { onSettings: applySettings })
       else if (view === 'task') {
@@ -140,7 +140,8 @@
       return h('div', {
         style: {
           display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px 40px',
-          background: C.bg, color: C.text, minHeight: '100%', boxSizing: 'border-box',
+          background: C.bg, color: C.text, minHeight: '100%', height: '100%',
+          overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box',
         },
       },
       h('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' } },

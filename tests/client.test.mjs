@@ -103,6 +103,20 @@ check('page element', Boolean(element) && typeof element.type === 'function', ty
 const source_checks = [
   ['no api key in client', !/api_key\s*:\s*[a-z]/i.test(source) || !/secrets\.json/.test(source)],
   ['host routes only', source.includes("const API = '/api/ai-replica'")],
+  // The settings page is a scrolling, paged form: without these the layout is
+  // back to one tall column whose save button can fall out of the panel.
+  ['settings slide keyframes shipped', source.includes('@keyframes rep-slide-right') && source.includes('@keyframes rep-slide-left')],
+  ['settings save bar is sticky', /position:\s*'sticky'/.test(source)],
+  ['settings panels are tabbed', source.includes('SETTINGS_TABS')],
+  ['app root scrolls', /overflowY:\s*'auto'/.test(source)],
+  // 商品信息（描述词）：上传后立刻提取，卡片三个固定分节必须在客户端里。
+  ['product profile card exists', source.includes('function ProductCard')],
+  ['product profile uses the describe route', source.includes("'describe'") && source.includes('product-profile')],
+  ['product profile keeps the fixed order', source.includes("profileName: '1. 商品名称'")
+    && source.includes("profilePoints: '2. 核心卖点")
+    && source.includes("profileColor: '3. 规格参数 · 颜色'")
+    && source.includes("profileAppearance: '3. 规格参数 · 外观'")],
+  ['home extracts product info after upload', /api\(`\/describe\?id=/.test(source)],
 ]
 for (const [name, condition] of source_checks) check(name, condition)
 
