@@ -109,14 +109,43 @@ node tests/image.test.mjs  # PNG 编解码 + 合成几何
 node tests/host.test.mjs   # Host 全流程（假中转站，含超时/401/预算/门禁）
 node tests/host-apply.test.mjs # 路由注册、Origin/Host 信任、销毁
 node tests/client.test.mjs # Client 半加载与 Slot 注册
+node tests/render.test.mjs # 无浏览器渲染全部阶段（迷你渲染器 + 真实 Host 快照）
+pnpm release               # 上面全部 + 打包 dist/ai-replica-2.0.0.zip
 ```
 
 Client 源码是按顺序拼接的片段：`src/client/00-header.js` → `10-core.js`（i18n / API / UI 原语）→ 各阶段 → `90-app.js`（外壳与 Slot 注册）。**改片段后必须 `pnpm build:client`**，`client.js` 是生成物。
 
+### 客户端怎么在没有浏览器的情况下被验证
+
+`tests/render.test.mjs` 用一个约百行的迷你 React（`createElement` 产出普通对象、`useState/useEffect/useMemo/useCallback/useRef` 带槽位存储、类组件支持 `render()`）+ 假 DOM 全局，把真实的 `client.js` 跑起来，再把 App 外壳和每个阶段都渲染一遍：
+
+- 快照不是手写假数据，而是 `tests/support/fixtures.mjs` 用**真实 Host 处理器**离线跑完整流水线（视觉与生图接口被桩掉，其余全真：存储、schema 校验、抠图落盘、背景标准化、合成、PNG 导出、验收）后抓取的，含 `analyzed / reviewed / background / editing / exported / done / history / settings` 八种状态。
+- 套件自带两个对照用例：会抛错的组件必须被捕获，异步 effect 里的 `setState` 必须真的触发下一轮渲染——否则"全绿"没有意义。
+- 断言既看"不许抛异常"，也看渲染出的文字（如设置页出现"中转站/模型"、历史页出现任务号），避免渲染出空壳。
+
+这套东西抓不到的东西：真实字体度量、Canvas 像素、浏览器事件；这些只能靠打开页面对着看。
+
 ## 契约
 
-- [`docs/contracts.md`](docs/contracts.md)：运行时映射、数据契约、26 条 Host 路由、模块 API。
+- [`docs/contracts.md`](docs/contracts.md)：运行时映射、数据契约、17 条精确路由、模块 API。
 - [`schemas/scene.schema.json`](schemas/scene.schema.json) / [`schemas/composition.schema.json`](schemas/composition.schema.json)：文档级 JSON Schema（运行时校验以 `lib/schema.js` 为准）。
+
+## 验证记录（2.0.0）
+
+自动：`pnpm release` → 6 个套件 170 条断言全绿（schema 27 / image 22 / host 37 / host-apply 17 / client 12 / render 55），产物 `dist/ai-replica-2.0.0.zip` 102.7 KB。
+
+真机（在运行中的 DSH 进程里直接打插件路由，`http://127.0.0.1:52434/api/ai-replica/*`）：
+
+| 探测 | 结果 |
+| --- | --- |
+| `GET /health` | `200`，`version 2.0.0`、`compositor host-node`、`cutout local-browser` |
+| `POST /tasks`（4:5 / 1024） | `200`，`state scene_review`，画布 `1024×1280` |
+| `POST /analyze?id=`（未配中转站） | `409 provider-missing`（不会空跑付费调用） |
+| `PUT /scene-review?id=`（无分析结果） | `409 scene-missing` |
+| `POST /export?id=`（未确认蒙版） | `409 mask-unconfirmed` |
+| `DELETE /task?id=&confirm=1` | `200`，测试数据已清空 |
+
+未验证：真实中转站的付费链路（需要 API Key）、真实浏览器里的字体与 Canvas 像素。
 
 ## 已知边界
 

@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
-    "test": "node tests/schema.test.mjs && node tests/image.test.mjs && node tests/host.test.mjs && node tests/host-apply.test.mjs && node tests/client.test.mjs",
+    "test": "node tests/schema.test.mjs && node tests/image.test.mjs && node tests/host.test.mjs && node tests/host-apply.test.mjs && node tests/client.test.mjs && node tests/render.test.mjs",
     "release": "node scripts/release.mjs"
   },
   "dsh": {

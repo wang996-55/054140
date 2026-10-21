@@ -2810,6 +2810,15 @@ window.__ModuleLoader__.load({
       return h(AppBoundary, null, h(App, { ctx: props.ctx }))
     }
 
+    // Test seam: the headless render suite asks for the stage components so it can
+    // render every state against real Host snapshots. Inert in the real page.
+    if (typeof window !== 'undefined' && window.__AI_REPLICA_TEST__) {
+      window.__AI_REPLICA_TEST__.internals = {
+        App, AppBoundary, Page, HomeView, SceneStage, MaskStage, BackgroundStage,
+        Workbench, AcceptStage, Stepper, TaskView, HistoryView, SettingsView, t,
+      }
+    }
+
     return {
       inject: ['slots', 'locale', 'theme', 'layout', 'uiWorkspace'],
       apply(ctx) {
