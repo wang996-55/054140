@@ -71,7 +71,7 @@
           url ? h('img', { src: url, alt: 'export', style: { width: '100%', borderRadius: 12, marginTop: 8 } }) : h('p', { style: ui.p }, t('empty')),
           h('div', { style: Object.assign({}, ui.row, { marginTop: 10 }) },
             url ? h(Btn, { variant: 'primary', onClick: () => downloadDataUrl(url, lastExport.file.split('/').pop()) }, t('downloadPng')) : null,
-            h(Btn, { onClick: () => api('/reveal', { method: 'POST', body: { task: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
+            h(Btn, { onClick: () => api('/reveal', { method: 'POST', body: { task_id: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
         h('div', { style: ui.card },
           h('h3', { style: ui.h3 }, t('acceptTitle')),
           h('p', { style: ui.p }, t('acceptIntro')),

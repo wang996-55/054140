@@ -1508,8 +1508,9 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('')
       const [draft, setDraft] = useState(null)
       const [mode, setMode] = useState('auto')
+      const [mismatch, setMismatch] = useState('')
 
-      const save = async () => {
+      const save = async (confirmContinue = false) => {
         const state = draft
         if (!state || !state.alpha) {
           setError(t('cutoutFailed'))
@@ -1552,11 +1553,12 @@ window.__ModuleLoader__.load({
               mask_png: canvasToPngDataUrl(maskCanvas),
             },
           })
-          const data = await taskApi(snapshot.task.id, 'mask', { method: 'PUT', body: { confirm: true } })
+          const data = await taskApi(snapshot.task.id, 'mask', { method: 'PUT', body: { confirm: true, confirm_continue: confirmContinue === true } })
           props.onChanged(data)
           props.notify('ok', t('maskSaved'))
         } catch (failure) {
-          setError(`${t('errorPrefix')}${failure.message}`)
+          if (failure.code === 'view-mismatch') setMismatch(failure.message)
+          else setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
           setBusy(false)
         }
@@ -1567,6 +1569,14 @@ window.__ModuleLoader__.load({
           h('h3', { style: ui.h3 }, t('maskTitle')),
           h('p', { style: ui.p }, t('maskIntro')),
           error ? h('div', { style: { marginTop: 10 } }, h(Notice, { tone: 'bad' }, error)) : null,
+          mismatch
+            ? h('div', { style: { marginTop: 10 } },
+              h(Notice, { tone: 'warn' },
+                h('div', null, mismatch),
+                h('div', { style: Object.assign({}, ui.row, { marginTop: 8 }) },
+                  h(Btn, { small: true, variant: 'primary', disabled: busy, onClick: () => save(true) }, '我确认仍然继续'),
+                  h(Btn, { small: true, variant: 'ghost', onClick: () => setMismatch('') }, t('cancel')))))
+            : null,
           h('div', { style: { marginTop: 12 } },
             h(MaskEditor, {
               src: snapshot.urls.product,
@@ -1577,7 +1587,7 @@ window.__ModuleLoader__.load({
             }))),
         h('div', { style: Object.assign({}, ui.cardTight, { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) },
           h('span', { style: { fontSize: 12, color: C.dim } }, t('maskGate')),
-          h(Btn, { variant: 'primary', disabled: busy, onClick: save }, busy ? t('working') : t('confirmMask'))))
+          h(Btn, { variant: 'primary', disabled: busy, onClick: () => save(false) }, busy ? t('working') : t('confirmMask'))))
     }
     // ==== 50-background.js ================================================
 
@@ -2187,7 +2197,7 @@ window.__ModuleLoader__.load({
                   h('p', { style: { fontSize: 12, color: C.dim, margin: 0 } }, t('exportOk', { w: exported.width, h: exported.height, kb: Math.round((exported.bytes || 0) / 1024) }))),
                 h('div', { style: ui.row },
                   h(Btn, { variant: 'primary', small: true, onClick: () => downloadDataUrl(exported.url, exported.file) }, t('downloadPng')),
-                  h(Btn, { small: true, onClick: () => api('/reveal', { method: 'POST', body: { task: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
+                  h(Btn, { small: true, onClick: () => api('/reveal', { method: 'POST', body: { task_id: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
               h('img', { src: exported.url, alt: 'export', style: { width: '100%', borderRadius: 10, marginTop: 10 } }))
             : null),
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
@@ -2354,7 +2364,7 @@ window.__ModuleLoader__.load({
           url ? h('img', { src: url, alt: 'export', style: { width: '100%', borderRadius: 12, marginTop: 8 } }) : h('p', { style: ui.p }, t('empty')),
           h('div', { style: Object.assign({}, ui.row, { marginTop: 10 }) },
             url ? h(Btn, { variant: 'primary', onClick: () => downloadDataUrl(url, lastExport.file.split('/').pop()) }, t('downloadPng')) : null,
-            h(Btn, { onClick: () => api('/reveal', { method: 'POST', body: { task: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
+            h(Btn, { onClick: () => api('/reveal', { method: 'POST', body: { task_id: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
         h('div', { style: ui.card },
           h('h3', { style: ui.h3 }, t('acceptTitle')),
           h('p', { style: ui.p }, t('acceptIntro')),

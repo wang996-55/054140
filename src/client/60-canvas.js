@@ -463,7 +463,7 @@
                   h('p', { style: { fontSize: 12, color: C.dim, margin: 0 } }, t('exportOk', { w: exported.width, h: exported.height, kb: Math.round((exported.bytes || 0) / 1024) }))),
                 h('div', { style: ui.row },
                   h(Btn, { variant: 'primary', small: true, onClick: () => downloadDataUrl(exported.url, exported.file) }, t('downloadPng')),
-                  h(Btn, { small: true, onClick: () => api('/reveal', { method: 'POST', body: { task: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
+                  h(Btn, { small: true, onClick: () => api('/reveal', { method: 'POST', body: { task_id: snapshot.task.id } }).catch(() => {}) }, t('openDir')))),
               h('img', { src: exported.url, alt: 'export', style: { width: '100%', borderRadius: 10, marginTop: 10 } }))
             : null),
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
