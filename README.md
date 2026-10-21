@@ -1,4 +1,4 @@
-# 爆款图复刻 · Replica Studio（`@local/ai-replica` 2.0.0）
+# 爆款图复刻 · Replica Studio（`@local/ai-replica` 2.1.0）
 
 按《AI_爆款图复刻_开发文档_V4.1》重写的 Harness 插件版：**整条流水线都在插件页面内跑完**，不再打开浏览器、不再起第二个端口、不依赖 Python / Konva / npm 依赖。
 
@@ -37,7 +37,7 @@
 5. **视角不兼容**时必须显式 `confirm_continue` 才能继续，并在任务上留痕。
 6. **导出只走 Host 合成器**，导出后重新解码自检尺寸。
 7. **付费调用绝不自动重试**：超时会进入 `remote_outcome_unknown` 并退回预算，由人决定是否重跑。
-8. **API Key 只存在 `secrets.json`（0600）**，或环境变量 `REPLICA_API_KEY`；不返回前端、不写日志、不进提示词。
+8. **两条通道的 API Key 分开保存**，只存在 `secrets.json`（0600）或环境变量 `REPLICA_VISION_API_KEY` / `REPLICA_IMAGE_API_KEY`；不返回前端、不写日志、不进提示词，且视觉 Key 与生图 Key 永不串用。
 
 ## 安装
 
@@ -54,16 +54,23 @@
 
 ## 首次配置
 
-插件右上角 →「设置」：
+插件右上角 →「设置」，页面分成**三张卡片**：视觉通道、生图通道、共享项。两条通道各自独立，可以指向不同中转站、用不同账号与 Key。
 
 | 字段 | 说明 |
 | --- | --- |
-| 中转站地址 | 例如 `https://relay.example.com/v1`（`allow_localhost` 默认关闭，SSRF 防护要求显式开启才允许 127.0.0.1） |
-| API Key | 保存后写入 `secrets.json`；页面只显示"已保存" |
-| 视觉 / 生图模型 | 两个独立模型名 |
-| 接口模式 | `openai_chat` / `openai_images` / `openai_edits` |
-| 超时 | 视觉默认 90s，生图默认 120s；超时即 `provider-timeout-unknown` |
-| 测试按钮 | **真实消耗一次请求**，必须二次确认 |
+| 协议（视觉） | `openai_chat` / `openai_responses` / `anthropic` / `gemini` —— 中转站兼容哪种就选哪种 |
+| 协议（生图） | `openai_images` / `openai_chat`（部分中转站用 chat 出图）/ `gemini` |
+| 中转站地址 | 每条通道各填一个，例如 `https://relay-a.example.com/v1`；可填**完整 URL**（含查询串，适合把 key 放 query 的中转站）；`{model}` 占位符会被展开 |
+| 请求路径 | 相对路径（默认 `<base_url>/chat/completions`、`/images/generations`）或完整 URL |
+| 模型 | 每条通道各一个；生图另有「编辑模型 / 编辑路径」用于参考图改图（multipart `/images/edits`） |
+| 认证方式 | `bearer`（`Authorization: Bearer`）/ `x-api-key`（Anthropic 系）/ `api-key`（Azure 系）/ `google`（`?key=`）/ `none` |
+| 额外请求头 | JSON，例如 `{"X-Relay-Token":"..."}`，与认证头合并，适配需要二次鉴权的中转站 |
+| API Key | 视觉 Key 与生图 Key **分开保存**，互不串用；保存后写入 `secrets.json`，页面只显示"已保存" |
+| 超时 | 视觉默认 120s，生图默认 300s；超时即 `provider-timeout-unknown`（可能已计费，不自动重试） |
+| 允许本机地址 | `allow_localhost` 默认关闭；SSRF 防护要求显式开启才允许 `127.0.0.1` 这类本地中转 |
+| 测试按钮 | 每条通道各自一个，**真实消耗一次请求**，必须二次确认 |
+
+Key 也可用环境变量给出，优先级从高到低：`REPLICA_VISION_API_KEY` / `REPLICA_IMAGE_API_KEY` → `REPLICA_API_KEY` → `OPENAI_API_KEY` → `secrets.json`。页面显示的 `vision.has_key` / `image.has_key` 会标注来源是环境变量还是已保存的 Key。
 
 ## 使用流程
 
@@ -79,8 +86,8 @@
 
 ```
 <DSH_PROFILE_DIR 或 ~/.dsh>/ai-replica/
-  settings.json          中转站与默认参数（不含 Key）
-  secrets.json           API Key（0600）
+  settings.json          双通道中转站设置（vision / image，不含 Key，schema 2.1）
+  secrets.json           视觉 Key 与生图 Key（0600）
   history.json           历史索引
   tasks/<id>/
     task.json            状态机、表单、预算、蒙版/背景/导出记录
@@ -105,12 +112,13 @@ created → analyzing → scene_review → mask_review → background_review →
 ```bash
 pnpm build:client          # src/client/*.js → client.js（无打包器，纯拼接）
 node tests/schema.test.mjs # 场景/组合 schema 与归一化
+node tests/relay.test.mjs  # 双通道配置、迁移、四种视觉协议、三种生图协议、Key 隔离
 node tests/image.test.mjs  # PNG 编解码 + 合成几何
 node tests/host.test.mjs   # Host 全流程（假中转站，含超时/401/预算/门禁）
 node tests/host-apply.test.mjs # 路由注册、Origin/Host 信任、销毁
 node tests/client.test.mjs # Client 半加载与 Slot 注册
 node tests/render.test.mjs # 无浏览器渲染全部阶段（迷你渲染器 + 真实 Host 快照）
-pnpm release               # 上面全部 + 打包 dist/ai-replica-2.0.0.zip
+pnpm release               # 上面全部 + 打包 dist/ai-replica-2.1.0.zip
 ```
 
 Client 源码是按顺序拼接的片段：`src/client/00-header.js` → `10-core.js`（i18n / API / UI 原语）→ 各阶段 → `90-app.js`（外壳与 Slot 注册）。**改片段后必须 `pnpm build:client`**，`client.js` 是生成物。
@@ -130,15 +138,16 @@ Client 源码是按顺序拼接的片段：`src/client/00-header.js` → `10-cor
 - [`docs/contracts.md`](docs/contracts.md)：运行时映射、数据契约、17 条精确路由、模块 API。
 - [`schemas/scene.schema.json`](schemas/scene.schema.json) / [`schemas/composition.schema.json`](schemas/composition.schema.json)：文档级 JSON Schema（运行时校验以 `lib/schema.js` 为准）。
 
-## 验证记录（2.0.0）
+## 验证记录（2.1.0）
 
-自动：`pnpm release` → 6 个套件 170 条断言全绿（schema 27 / image 22 / host 37 / host-apply 17 / client 12 / render 55），产物 `dist/ai-replica-2.0.0.zip` 102.7 KB。
+自动：`pnpm release` → 7 个套件 246 条断言全绿（schema 27 / relay 69 / image 22 / host 41 / host-apply 20 / client 12 / render 55），产物 `dist/ai-replica-2.1.0.zip` 112.2 KB。
 
 真机（在运行中的 DSH 进程里直接打插件路由，`http://127.0.0.1:52434/api/ai-replica/*`）：
 
 | 探测 | 结果 |
 | --- | --- |
-| `GET /health` | `200`，`version 2.0.0`、`compositor host-node`、`cutout local-browser` |
+| `GET /health` | `200`，`version 2.1.0`、`compositor host-node`、`cutout local-browser` |
+| `GET /settings` | `200`，返回 `vision` / `image` 两套配置 + `relay` 枚举 + `vision.has_key` / `image.has_key` |
 | `POST /tasks`（4:5 / 1024） | `200`，`state scene_review`，画布 `1024×1280` |
 | `POST /analyze?id=`（未配中转站） | `409 provider-missing`（不会空跑付费调用） |
 | `PUT /scene-review?id=`（无分析结果） | `409 scene-missing` |

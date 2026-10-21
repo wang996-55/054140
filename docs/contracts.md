@@ -139,6 +139,50 @@ created → analyzing → scene_review → mask_review → background_review →
 
 `output_size` 是**短边**；`aspect` 推出画布：`1:1 → s×s`、`4:5 → s×(s·1.25)`、`3:4 → s×(s·4/3)`、`16:9 → (s·16/9)×s`（`lib/api.js#canvasSize`，与 Client `aspectSize` 一致）。
 
+### 1.6 中转站设置（`settings.json`，schema 2.1）
+
+**视觉接口与生图接口各自使用独立配置**：两条通道分别保存 `base_url / path / model / auth / headers / timeout_ms`，可以指向不同中转站、不同账号、不同 Key。
+
+```jsonc
+{
+  "schema_version": "2.1",
+  "vision": {
+    "provider": "openai_chat|openai_responses|anthropic|gemini",
+    "base_url": "https://relay-a.example.com/v1",
+    "path": "/chat/completions",
+    "model": "gpt-4o-mini",
+    "auth": "bearer|x-api-key|api-key|google|none",
+    "headers": { "X-Relay-Token": "..." },
+    "timeout_ms": 120000,
+    "detail": "auto|low|high",
+    "max_tokens": 0
+  },
+  "image": {
+    "provider": "openai_images|openai_chat|gemini",
+    "base_url": "https://relay-b.example.com/v1",
+    "path": "/images/generations",
+    "edit_path": "/images/edits",
+    "model": "gpt-image-1",
+    "edit_model": "",
+    "auth": "bearer|x-api-key|api-key|google|none",
+    "headers": {},
+    "timeout_ms": 300000,
+    "size": "1024x1024",
+    "response_format": "b64_json|url",
+    "quality": ""
+  },
+  "allow_localhost": false,
+  "max_download_bytes": 33554432,
+  "max_base64_bytes": 33554432
+}
+```
+
+- `path` 可写相对路径（拼在 `base_url` 后）或**完整 URL**（含查询串，部分中转站把 key 放在 query 里）；`{model}` 占位符会被展开，例如 `"/models/{model}/generations"`。
+- `headers` 用于第三方中转站要求的额外令牌（`X-Relay-Token`、`HTTP-Referer` 等），与 `auth` 生成的认证头合并。
+- **Key 隔离**：`vision_api_key` 与 `image_api_key` 分别保存，互不串用；解析顺序为环境变量 `REPLICA_VISION_API_KEY` / `REPLICA_IMAGE_API_KEY` → `REPLICA_API_KEY` → `OPENAI_API_KEY` → `secrets.json`（`vision_api_key` / `image_api_key`，兼容旧的 `api_key`）。Key 永不返回给 Client、永不写日志。
+- 旧版扁平设置（`base_url` / `models` / `protocols` / `paths` / `timeout_ms` / `image_*`）经 `lib/relay.js#migrateLegacySettings` 自动升级为双通道。
+- 第三方兼容：视觉支持 `openai_chat` / `openai_responses` / `anthropic` / `gemini` 四种请求与响应形态；生图支持 `openai_images`（`/images/generations`、`/images/edits` multipart）、`openai_chat`（部分中转站用 chat 出图）、`gemini`（`generateContent`）。图片回包解析兼容 `b64_json` / `url` / markdown 链接 / 裸 base64 / `output` 块。
+
 ---
 
 ## 2. Host HTTP 契约（同源，前缀 `/api/ai-replica`）
@@ -148,10 +192,10 @@ created → analyzing → scene_review → mask_review → background_review →
 
 | 方法 & 路径 | 请求 | 成功响应 | 主要错误 |
 | --- | --- | --- | --- |
-| `GET /health` | — | `{ version, root, has_key, source, cutout:'local-browser', compositor:'host-node' }` | — |
-| `GET /settings` | — | `{ settings, has_key, source, enums, labels, composition_enums, versions }` | — |
-| `PUT /settings` | `{ settings, api_key? }` | `{ settings, has_key, source }` | `bad-request` |
-| `POST /settings/test` | `{ kind:'vision'|'image', confirm_cost:true }` | `{ ok, kind, ms, ...provider }` | `bad-request`（未确认）、`provider-*` |
+| `GET /health` | — | `{ version, root, has_key, configured, source, vision:{has_key,source}, image:{has_key,source}, cutout:'local-browser', compositor:'host-node' }` | — |
+| `GET /settings` | — | `{ settings, has_key, configured, source, vision, image, enums, labels, composition_enums, relay, versions }` | — |
+| `PUT /settings` | `{ settings, vision_api_key?, image_api_key? }`（旧的 `api_key` 会同时写入两条通道） | `{ settings, has_key, configured, source, vision, image }` | `bad-request` |
+| `POST /settings/test` | `{ kind:'vision'\|'image', confirm_cost:true }` | `{ ok, kind, ms, ...provider }`（各用自己通道的 url / model / key） | `bad-request`（未确认）、`provider-*` |
 | `GET /tasks?limit=` | — | `{ total, items:[{ id, state, reference_type, rating, export, thumbnail, created_at, updated_at }] }` | — |
 | `POST /tasks` | `{ form, images:{ reference, product? } }`（data URL） | 完整 snapshot | `product-required`(400)、`asset-invalid` |
 | `GET /task?id=` | — | 完整 snapshot | `not-found`(404) |
@@ -204,7 +248,8 @@ created → analyzing → scene_review → mask_review → background_review →
 `SCENE_ENUMS` `COMPOSITION_ENUMS` `SCENE_LABELS_ZH` `SCENE_SCHEMA` `COMPOSITION_SCHEMA` `validateScene` `validateComposition` `coerceHex` `defaultScene()` `normalizeScene(raw)` `ratioPreset(w, h)` `defaultComposition(seed)` `normalizeComposition(raw)` `unconfirmedPaths` `mergeSceneReview` `unconfirmedAfterReview(scene, confirmed)`。
 
 ### `lib/relay.js`
-`DEFAULT_SETTINGS` `normalizeProviderSettings(next, current)` `resolveApiKey(settings)`（`REPLICA_API_KEY` / `OPENAI_API_KEY` 优先）`callVision({settings, apiKey, image, prompt, timeoutMs, fetchImpl})` `parseImageResponse(payload)` `assertSafeRemoteUrl(url, allowLocalhost)` `downloadImage(url, opts)` `generateImage({...})` `testProvider({kind})` `class RelayError`。
+`VISION_PROVIDERS` `IMAGE_PROVIDERS` `AUTH_STYLES` `DEFAULT_VISION` `DEFAULT_IMAGE` `DEFAULT_SHARED` `defaultSettings()` `migrateLegacySettings(raw)` `normalizeVision` `normalizeImage` `normalizeProviderSettings(next, current)` `resolveChannelKey(channel, secrets, env)` `keyState(secrets, env)` `channelHeaders(channel, apiKey)` `channelUrl(channel)` `channelUrlForModel(channel)` `buildVisionRequest` `callVision({channel, apiKey, prompt, images, fetchImpl, timeoutMs})` `buildImageRequest` `generateImage({channel, shared, apiKey, prompt, size, referenceImages, fetchImpl, timeoutMs})` `testProvider({settings, visionKey, imageKey, kind})` `splitDataUrl` `parseImageResponse(payload)` `assertSafeRemoteUrl(url, allowLocalhost)` `downloadImage(url, opts)` `class RelayError`。
+两条通道完全独立：视觉只读 `settings.vision` + 视觉 Key，生图只读 `settings.image` + 生图 Key。
 SSRF：拒绝私网 / 环回 / CGNAT / 元数据地址，除非 `allow_localhost`；重定向手动跟随并逐跳校验；响应体有体积上限。
 
 ### `lib/prompts.js`
@@ -226,7 +271,7 @@ codes：`view-unknown` `view-mismatch` `placement-blocked` `surface-suspended` `
 `STATE_FLOW` `canTransition(from, to)` `readSettings` `writeSettings` `readSecrets` `writeSecrets`（0600）`clearSecrets` `createTask` `loadTask` `updateTask` `setState` `listTasks` `deleteTask` `reserveCall(task, kind)` `refundCall(task, kind)` `recordCall` `logRelay` `saveExportFile` `fingerprint(composition)`。
 
 ### `lib/api.js`
-`PREFIX='/api/ai-replica'`、`VERSION='2.0.0'`、`createHandlers() → { health, settings, test, tasks, taskById, action, file, reveal }`、`export { snapshot }`。
+`PREFIX='/api/ai-replica'`、`VERSION='2.1.0'`、`createHandlers() → { health, settings, test, tasks, taskById, action, file, reveal }`、`export { snapshot }`、`RELAY_ENUMS`。
 
 ### `index.js`
 `export const inject = ['webServer']`，`export function apply(ctx)`：`ctx.effect` 内注册 **17 条精确路由**（`health`、`settings`、`settings/test`、`file`、`reveal`、`tasks`、`task`，加 10 个动作 `analyze / scene-review / cutout / mask / compatibility / background / composition / export / accept / cancel`），任务 id 从 `?id=` 读取，统一 `wrap()` 做 Origin/Host 校验 + `AppError → JSON`。
@@ -248,7 +293,7 @@ codes：`view-unknown` `view-mismatch` `placement-blocked` `surface-suspended` `
 | `60-canvas.js` | Canvas 工作台：拖拽/缩放/旋转、文字层 3 版式、阴影、明度色温、撤销/重做、导出 |
 | `70-task.js` | 任务外壳：8 步进度、2s 轮询、横幅、验收 |
 | `80-history.js` | 历史列表、打开、删除 |
-| `85-settings.js` | 中转站、Key、模型、协议、超时、测试 |
+| `85-settings.js` | 双通道设置：视觉卡 + 生图卡各自的中转站、路径、模型、认证方式、Key、额外请求头、超时、单通道测试；共享项（允许本机地址） |
 | `90-app.js` | App 外壳、错误边界、Slot 注册 |
 
 Client 侧自动抠图（`40-mask.js`）：
@@ -273,10 +318,12 @@ ctx.slots.register({ name: 'sidebar.panellist', id: 'ai-replica', order: -12, la
 | 文件 | 覆盖 |
 | --- | --- |
 | `tests/schema.test.mjs` | 场景/组合校验、别名归一化、未确认路径 |
+| `tests/relay.test.mjs` | 双通道配置与迁移、URL/请求头、四种视觉协议、三种生图请求、图片回包解析、Key 隔离、SSRF 校验、单通道测试 |
 | `tests/image.test.mjs` | PNG 往返、坏数据拒绝、几何计划、合成/阴影/调整/cover |
-| `tests/host.test.mjs` | 全流程（假中转站）：设置、建任务、分析、门禁、抠图、蒙版、背景、合成、导出、验收、超时/401/预算/穿越 |
-| `tests/host-apply.test.mjs` | 路由注册与销毁、Origin/Host 信任（含 loopback 别名） |
+| `tests/host.test.mjs` | 全流程（假中转站）：双通道设置、建任务、分析、门禁、抠图、蒙版、背景、合成、导出、验收、超时/401/预算/穿越 |
+| `tests/host-apply.test.mjs` | 路由注册与销毁、设置双通道形状、Origin/Host 信任（含 loopback 别名） |
 | `tests/client.test.mjs` | Client 半加载、Slot 注册、无 Key 泄漏 |
+| `tests/render.test.mjs` | 无头渲染全部视图（React shim + 真实 Host 快照） |
 
 `node scripts/release.mjs` = 重建 client + 全部测试 + 打包 `dist/ai-replica-<version>.zip` 并打印 SHA-256。
 
@@ -286,8 +333,8 @@ ctx.slots.register({ name: 'sidebar.panellist', id: 'ai-replica', order: -12, la
 
 ```
 <DSH_PROFILE_DIR 或 ~/.dsh>/ai-replica/
-  settings.json          { base_url, models, protocols, paths, timeouts, image_size, allow_localhost }
-  secrets.json           { api_key, saved_at }（0600）
+  settings.json          { schema_version:'2.1', vision:{...}, image:{...}, allow_localhost, max_*_bytes }
+  secrets.json           { vision_api_key, image_api_key, saved_at }（0600）
   history.json           { items: [...] }
   tasks/<id>/
     task.json

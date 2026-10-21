@@ -136,11 +136,11 @@ export async function buildSnapshots() {
 
   const settings = await call(handlers.settings, 'PUT', '/api/ai-replica/settings', {
     settings: {
-      base_url: 'https://relay.test/v1',
-      models: { vision: 'vision-x', image: 'image-x' },
-      protocols: { vision: 'openai_chat', image: 'openai_images' },
+      vision: { provider: 'openai_chat', base_url: 'https://relay.test/v1', path: '/chat/completions', model: 'vision-x', auth: 'bearer' },
+      image: { provider: 'openai_images', base_url: 'https://relay.test/v1', path: '/images/generations', model: 'image-x', auth: 'bearer' },
     },
-    api_key: 'sk-test-123',
+    vision_api_key: 'sk-vision-123',
+    image_api_key: 'sk-image-123',
   })
 
   const created = await call(handlers.tasks, 'POST', '/api/ai-replica/tasks', {

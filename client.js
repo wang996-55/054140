@@ -62,6 +62,8 @@ window.__ModuleLoader__.load({
         confirm: '确认',
         unknown: '无法判断',
         notConfigured: '尚未配置中转站',
+        notConfiguredVision: '视觉通道尚未配置 API Key（仍可生成，只是不做视觉分析）',
+        notConfiguredImage: '生图通道尚未配置 API Key',
         goSettings: '去设置',
         errorPrefix: '出错：',
 
@@ -241,25 +243,35 @@ window.__ModuleLoader__.load({
         ratingLabel: '评分',
 
         setTitle: '中转站与接口设置',
-        setIntro: '只有 Host 进程持有 API Key；图片与提示词都不经过浏览器直连中转站。',
-        baseUrl: '中转站地址',
-        apiKey: 'API Key',
-        apiKeySaved: '已保存（留空表示不修改）',
-        apiKeyEnv: '当前使用环境变量 REPLICA_API_KEY',
-        visionModel: '视觉模型',
-        imageModel: '生图模型',
-        visionProtocol: '视觉接口模式',
-        imageProtocol: '生图接口模式',
-        chatPath: 'Chat 路径',
-        imagesPath: '生图路径',
-        editsPath: '图生图路径',
-        timeout: '视觉超时（毫秒）',
-        imageTimeout: '生图超时（毫秒）',
+        setIntro: '视觉与生图是两条独立通道：可以分别是不同的中转站、不同的 Key、不同的接口模式。Key 只存在 Host 进程，图片与提示词都不经过浏览器直连中转站。',
+        visionCard: '视觉通道 · 分析参考图',
+        visionCardHint: '把参考图发给多模态模型，产出 Scene JSON。第三方中转站多数选「OpenAI Chat」。',
+        imageCard: '生图通道 · 生成背景',
+        imageCardHint: '生成无商品背景。OpenAI 官方选「OpenAI Images」；只提供 chat 接口的中转站选「OpenAI Chat」。',
+        provider: '接口模式',
+        relayUrl: '中转站地址',
+        relayUrlHint: '填到 /v1 这一层；粘成完整接口地址也可以，Host 会自动去掉多余后缀。',
+        relayPath: '接口路径',
+        relayPathHint: '可写相对路径（/chat/completions），也可粘完整 URL。支持 {model} 占位符。',
+        modelId: '模型',
+        authStyle: '鉴权方式',
+        headersJson: '额外请求头（JSON，可留空）',
+        headersInvalid: '额外请求头必须是合法的 JSON 对象，例如 {"X-Relay-Token":"abc"}',
+        channelKey: '该通道 API Key',
+        keySaved: '已保存（留空表示不修改）',
+        keyEnv: '当前使用环境变量',
+        editModel: '图生图模型（可留空）',
+        editPath: '图生图路径',
+        qualityHint: '画质参数（可留空）',
+        sharedCard: '全局',
+        sharedHint: '两条通道共用的安全与体积限制。',
+        timeout: '超时（毫秒）',
+        imageTimeout: '超时（毫秒）',
         imageSize: '生图尺寸',
         allowLocalhost: '允许本机中转站（127.0.0.1）',
         saveSettings: '保存设置',
-        testVision: '测试视觉接口',
-        testImage: '测试生图接口',
+        testVision: '测试视觉通道',
+        testImage: '测试生图通道',
         testCost: '测试会真实消耗一次请求，是否继续？',
         testOk: '测试成功',
         enumsHint: '所有枚举取值与中文名称由 Host 下发，页面与契约永远一致。',
@@ -284,6 +296,8 @@ window.__ModuleLoader__.load({
         confirm: 'Confirm',
         unknown: 'unknown',
         notConfigured: 'Relay not configured',
+        notConfiguredVision: 'Vision channel has no API key (generation still runs, without analysis)',
+        notConfiguredImage: 'Image channel has no API key',
         goSettings: 'Open settings',
         errorPrefix: 'Error: ',
 
@@ -462,26 +476,36 @@ window.__ModuleLoader__.load({
         deleteConfirm: 'Delete this task and its local files?',
         ratingLabel: 'Rating',
 
-        setTitle: 'Relay and provider',
-        setIntro: 'Only the Host holds the API key; images and prompts never go straight from the browser.',
-        baseUrl: 'Base URL',
-        apiKey: 'API key',
-        apiKeySaved: 'Saved (leave empty to keep it)',
-        apiKeyEnv: 'Using the REPLICA_API_KEY environment variable',
-        visionModel: 'Vision model',
-        imageModel: 'Image model',
-        visionProtocol: 'Vision protocol',
-        imageProtocol: 'Image protocol',
-        chatPath: 'Chat path',
-        imagesPath: 'Image path',
-        editsPath: 'Edit path',
-        timeout: 'Vision timeout (ms)',
-        imageTimeout: 'Image timeout (ms)',
+        setTitle: 'Relay and endpoints',
+        setIntro: 'Vision and image are two independent channels: different relays, different keys, different protocols. Keys live only in the Host process; images and prompts never go straight from the browser.',
+        visionCard: 'Vision channel · reference analysis',
+        visionCardHint: 'Sends the reference image to a multimodal model and returns Scene JSON. Most third-party relays use "OpenAI Chat".',
+        imageCard: 'Image channel · background generation',
+        imageCardHint: 'Generates the product-free background. OpenAI official is "OpenAI Images"; chat-only relays use "OpenAI Chat".',
+        provider: 'Protocol',
+        relayUrl: 'Relay base URL',
+        relayUrlHint: 'Point at the /v1 level; a full endpoint is accepted and trimmed automatically.',
+        relayPath: 'Endpoint path',
+        relayPathHint: 'Relative path (/chat/completions) or a full URL. {model} is expanded.',
+        modelId: 'Model',
+        authStyle: 'Auth style',
+        headersJson: 'Extra headers (JSON, optional)',
+        headersInvalid: 'Extra headers must be a JSON object, e.g. {"X-Relay-Token":"abc"}',
+        channelKey: 'API key for this channel',
+        keySaved: 'Saved (leave empty to keep it)',
+        keyEnv: 'Using environment variable',
+        editModel: 'Edit model (optional)',
+        editPath: 'Edit path',
+        qualityHint: 'Quality (optional)',
+        sharedCard: 'Shared',
+        sharedHint: 'Limits both channels share.',
+        timeout: 'Timeout (ms)',
+        imageTimeout: 'Timeout (ms)',
         imageSize: 'Image size',
         allowLocalhost: 'Allow a local relay (127.0.0.1)',
         saveSettings: 'Save settings',
-        testVision: 'Test vision',
-        testImage: 'Test image',
+        testVision: 'Test vision channel',
+        testImage: 'Test image channel',
         testCost: 'The test really uses one request. Continue?',
         testOk: 'Test passed',
         enumsHint: 'Every enum and Chinese label comes from the Host, so the page always matches the contract.',
@@ -2518,16 +2542,78 @@ window.__ModuleLoader__.load({
     // ==== 85-settings.js ==================================================
 
     // ------------------------------------------------------------ settings
-    const PROTOCOL_OPTIONS = [
-      { value: 'openai_chat', label: 'OpenAI Chat (/chat/completions)' },
-      { value: 'openai_images', label: 'OpenAI Images (/images/generations)' },
-      { value: 'openai_edits', label: 'OpenAI Edits (/images/edits)' },
-    ]
+    /* 视觉与生图两条独立通道：各填各的中转站、路径、模型、鉴权与 Key。
+       下拉选项由 Host 下发的 relay 枚举驱动，第三方中转站新协议不必改页面。 */
+    const PROVIDER_LABELS = {
+      openai_chat: 'OpenAI Chat（/chat/completions）',
+      openai_responses: 'OpenAI Responses（/responses）',
+      anthropic: 'Anthropic Messages（/messages）',
+      gemini: 'Google Gemini（:generateContent）',
+      openai_images: 'OpenAI Images（/images/generations）',
+    }
+    const AUTH_LABELS = {
+      bearer: 'Authorization: Bearer',
+      'x-api-key': 'x-api-key（Anthropic 风格）',
+      'api-key': 'api-key（Azure 风格）',
+      google: 'x-goog-api-key（Google）',
+      none: '不鉴权（本机代理）',
+    }
+
+    const providerOptions = list => (Array.isArray(list) ? list : ['openai_chat', 'openai_images'])
+      .map(value => ({ value, label: PROVIDER_LABELS[value] || value }))
+    const authOptions = list => (Array.isArray(list) ? list : ['bearer', 'x-api-key', 'api-key', 'google', 'none'])
+      .map(value => ({ value, label: AUTH_LABELS[value] || value }))
+
+    function ChannelCard(props) {
+      const { channel, onChange, relay } = props
+      const set = (path, value) => {
+        const next = JSON.parse(JSON.stringify(channel))
+        const parts = path.split('.')
+        let cursor = next
+        for (let index = 0; index < parts.length - 1; index += 1) {
+          if (!cursor[parts[index]] || typeof cursor[parts[index]] !== 'object') cursor[parts[index]] = {}
+          cursor = cursor[parts[index]]
+        }
+        cursor[parts[parts.length - 1]] = value
+        onChange(next)
+      }
+      return h('div', { style: ui.card },
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } },
+          h('h3', { style: ui.h3 }, props.title),
+          h(Badge, { tone: props.keyState && props.keyState.has_key ? 'ok' : 'dim' },
+            props.keyState && props.keyState.has_key
+              ? (props.keyState.source === 'env' ? t('keyEnv') : t('keySaved'))
+              : '未配置 Key')),
+        h('p', { style: Object.assign({}, ui.p, { marginTop: 4 }) }, props.hint),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 10 } },
+          h(Field, { label: t('provider') },
+            h(Select, { value: channel.provider, options: providerOptions(props.providers), onChange: value => set('provider', value) })),
+          h(Field, { label: t('relayUrl'), hint: t('relayUrlHint') },
+            h(TextInput, { value: channel.base_url, placeholder: 'https://relay.example.com/v1', onChange: value => set('base_url', value) })),
+          h(Field, { label: t('relayPath'), hint: t('relayPathHint') },
+            h(TextInput, { value: channel.path, onChange: value => set('path', value) })),
+          h(Field, { label: t('modelId') },
+            h(TextInput, { value: channel.model, onChange: value => set('model', value) })),
+          h(Field, { label: t('authStyle') },
+            h(Select, { value: channel.auth, options: authOptions(relay.auth_styles), onChange: value => set('auth', value) })),
+          h(Field, { label: props.timeoutLabel },
+            h(TextInput, { value: String(channel.timeout_ms), onChange: value => set('timeout_ms', Number(value) || 0) })),
+          h(Field, { label: t('channelKey'), hint: props.keyState && props.keyState.has_key ? t('keySaved') : '' },
+            h(TextInput, { type: 'password', value: props.keyValue, placeholder: props.keyState && props.keyState.has_key ? '••••••••' : 'sk-…', onChange: props.onKey })),
+          props.extraFields || null),
+        h(Field, { label: t('headersJson'), hint: t('headersInvalid') },
+          h(TextArea, { rows: 2, value: props.headersText, onChange: props.onHeaders })),
+        h('div', { style: Object.assign({}, ui.row, { marginTop: 10 }) },
+          h(Btn, { disabled: props.busy || !(props.keyState && props.keyState.has_key), onClick: props.onTest },
+            props.busy ? t('working') : props.testLabel)))
+    }
 
     function SettingsView(props) {
       const [settings, setSettings] = useState(null)
-      const [keyState, setKeyState] = useState({ has_key: false, key_source: '' })
-      const [apiKey, setApiKey] = useState('')
+      const [relay, setRelay] = useState({ vision_providers: [], image_providers: [], auth_styles: [] })
+      const [keys, setKeys] = useState({ has_key: false, vision: { has_key: false }, image: { has_key: false } })
+      const [draftKey, setDraftKey] = useState({ vision: '', image: '' })
+      const [headersText, setHeadersText] = useState({ vision: '{}', image: '{}' })
       const [busy, setBusy] = useState('')
       const [error, setError] = useState('')
       const [notice, setNotice] = useState('')
@@ -2536,7 +2622,12 @@ window.__ModuleLoader__.load({
         try {
           const data = await api('/settings')
           setSettings(data.settings)
-          setKeyState({ has_key: data.has_key, key_source: data.source })
+          setRelay(data.relay || {})
+          setKeys({ has_key: data.has_key, vision: data.vision || { has_key: false }, image: data.image || { has_key: false } })
+          setHeadersText({
+            vision: JSON.stringify((data.settings.vision && data.settings.vision.headers) || {}, null, 0),
+            image: JSON.stringify((data.settings.image && data.settings.image.headers) || {}, null, 0),
+          })
           props.onSettings && props.onSettings(data)
           setError('')
         } catch (failure) {
@@ -2552,18 +2643,29 @@ window.__ModuleLoader__.load({
         return h('div', { style: ui.row }, error ? h(Notice, { tone: 'bad' }, error) : h(Spinner), error ? null : h('span', null, t('loading')))
       }
 
-      const patch = (path, value) => {
-        setSettings(current => {
-          const next = JSON.parse(JSON.stringify(current))
-          const parts = path.split('.')
-          let cursor = next
-          for (let index = 0; index < parts.length - 1; index += 1) {
-            if (!cursor[parts[index]] || typeof cursor[parts[index]] !== 'object') cursor[parts[index]] = {}
-            cursor = cursor[parts[index]]
+      const patchShared = (field, value) => setSettings(current => Object.assign({}, current, { [field]: value }))
+      const patchChannel = name => next => setSettings(current => Object.assign({}, current, { [name]: next }))
+
+      const parseHeaders = () => {
+        const parsed = {}
+        for (const name of ['vision', 'image']) {
+          const raw = String(headersText[name] || '').trim()
+          if (!raw) {
+            parsed[name] = {}
+            continue
           }
-          cursor[parts[parts.length - 1]] = value
-          return next
-        })
+          let value
+          try {
+            value = JSON.parse(raw)
+          } catch {
+            throw new Error(`${name === 'vision' ? t('visionCard') : t('imageCard')}: ${t('headersInvalid')}`)
+          }
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            throw new Error(`${name === 'vision' ? t('visionCard') : t('imageCard')}: ${t('headersInvalid')}`)
+          }
+          parsed[name] = value
+        }
+        return parsed
       }
 
       const save = async () => {
@@ -2571,10 +2673,18 @@ window.__ModuleLoader__.load({
         setError('')
         setNotice('')
         try {
-          const data = await api('/settings', { method: 'PUT', body: { settings, api_key: apiKey } })
+          const headers = parseHeaders()
+          const payload = Object.assign({}, settings, {
+            vision: Object.assign({}, settings.vision, { headers: headers.vision }),
+            image: Object.assign({}, settings.image, { headers: headers.image }),
+          })
+          const body = { settings: payload }
+          if (draftKey.vision) body.vision_api_key = draftKey.vision
+          if (draftKey.image) body.image_api_key = draftKey.image
+          const data = await api('/settings', { method: 'PUT', body })
           setSettings(data.settings)
-          setKeyState({ has_key: data.has_key, key_source: data.source })
-          setApiKey('')
+          setKeys({ has_key: data.has_key, vision: data.vision || { has_key: false }, image: data.image || { has_key: false } })
+          setDraftKey({ vision: '', image: '' })
           setNotice(t('saved'))
           props.onSettings && props.onSettings(data)
         } catch (failure) {
@@ -2591,7 +2701,7 @@ window.__ModuleLoader__.load({
         setNotice('')
         try {
           const data = await api('/settings/test', { method: 'POST', body: { kind, confirm_cost: true } })
-          setNotice(`${t('testOk')} · ${data.model || ''} ${data.ms ? `${data.ms}ms` : ''}`)
+          setNotice(`${t('testOk')} · ${kind === 'image' ? t('imageCard') : t('visionCard')} · ${data.model || ''} ${data.ms ? `${data.ms}ms` : ''}`)
         } catch (failure) {
           setError(`${t('errorPrefix')}${failure.message}`)
         } finally {
@@ -2599,44 +2709,68 @@ window.__ModuleLoader__.load({
         }
       }
 
-      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 900 } },
+      const visionCard = h(ChannelCard, {
+        title: t('visionCard'),
+        hint: t('visionCardHint'),
+        channel: settings.vision,
+        providers: relay.vision_providers,
+        relay,
+        onChange: patchChannel('vision'),
+        keyValue: draftKey.vision,
+        keyState: keys.vision,
+        onKey: value => setDraftKey(current => Object.assign({}, current, { vision: value })),
+        headersText: headersText.vision,
+        onHeaders: value => setHeadersText(current => Object.assign({}, current, { vision: value })),
+        timeoutLabel: t('timeout'),
+        testLabel: t('testVision'),
+        busy: busy === 'vision',
+        onTest: () => test('vision'),
+      })
+
+      const imageCard = h(ChannelCard, {
+        title: t('imageCard'),
+        hint: t('imageCardHint'),
+        channel: settings.image,
+        providers: relay.image_providers,
+        relay,
+        onChange: patchChannel('image'),
+        keyValue: draftKey.image,
+        keyState: keys.image,
+        onKey: value => setDraftKey(current => Object.assign({}, current, { image: value })),
+        headersText: headersText.image,
+        onHeaders: value => setHeadersText(current => Object.assign({}, current, { image: value })),
+        timeoutLabel: t('imageTimeout'),
+        testLabel: t('testImage'),
+        busy: busy === 'image',
+        onTest: () => test('image'),
+        extraFields: [
+          h(Field, { key: 'size', label: t('imageSize') },
+            h(TextInput, { value: settings.image.size, placeholder: '1024x1024', onChange: value => patchChannel('image')(Object.assign({}, settings.image, { size: value })) })),
+          h(Field, { key: 'edit-model', label: t('editModel') },
+            h(TextInput, { value: settings.image.edit_model, onChange: value => patchChannel('image')(Object.assign({}, settings.image, { edit_model: value })) })),
+          h(Field, { key: 'edit-path', label: t('editPath') },
+            h(TextInput, { value: settings.image.edit_path, onChange: value => patchChannel('image')(Object.assign({}, settings.image, { edit_path: value })) })),
+          h(Field, { key: 'quality', label: t('qualityHint') },
+            h(TextInput, { value: settings.image.quality, placeholder: 'high / medium / low', onChange: value => patchChannel('image')(Object.assign({}, settings.image, { quality: value })) })),
+        ],
+      })
+
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1000 } },
         h('div', null,
           h('h2', { style: ui.h2 }, t('setTitle')),
           h('p', { style: ui.p }, t('setIntro'))),
         error ? h(Notice, { tone: 'bad' }, error) : null,
         notice ? h(Notice, { tone: 'ok' }, notice) : null,
-        h('div', { style: ui.card },
-          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 } },
-            h(Field, { label: t('baseUrl') },
-              h(TextInput, { value: settings.base_url, placeholder: 'https://relay.example.com/v1', onChange: value => patch('base_url', value) })),
-            h(Field, { label: t('apiKey'), hint: keyState.has_key ? (keyState.key_source === 'env' ? t('apiKeyEnv') : t('apiKeySaved')) : '' },
-              h(TextInput, { type: 'password', value: apiKey, placeholder: keyState.has_key ? '••••••••' : 'sk-…', onChange: setApiKey })),
-            h(Field, { label: t('visionModel') },
-              h(TextInput, { value: settings.models.vision, onChange: value => patch('models.vision', value) })),
-            h(Field, { label: t('imageModel') },
-              h(TextInput, { value: settings.models.image, onChange: value => patch('models.image', value) })),
-            h(Field, { label: t('visionProtocol') },
-              h(Select, { value: settings.protocols.vision, options: PROTOCOL_OPTIONS, onChange: value => patch('protocols.vision', value) })),
-            h(Field, { label: t('imageProtocol') },
-              h(Select, { value: settings.protocols.image, options: PROTOCOL_OPTIONS, onChange: value => patch('protocols.image', value) })),
-            h(Field, { label: t('chatPath') },
-              h(TextInput, { value: settings.paths.chat, onChange: value => patch('paths.chat', value) })),
-            h(Field, { label: t('imagesPath') },
-              h(TextInput, { value: settings.paths.images, onChange: value => patch('paths.images', value) })),
-            h(Field, { label: t('editsPath') },
-              h(TextInput, { value: settings.paths.edits, onChange: value => patch('paths.edits', value) })),
-            h(Field, { label: t('timeout') },
-              h(TextInput, { value: String(settings.timeout_ms), onChange: value => patch('timeout_ms', Number(value) || 0) })),
-            h(Field, { label: t('imageTimeout') },
-              h(TextInput, { value: String(settings.image_timeout_ms), onChange: value => patch('image_timeout_ms', Number(value) || 0) })),
-            h(Field, { label: t('imageSize') },
-              h(TextInput, { value: settings.image_size || '', placeholder: '1024x1024', onChange: value => patch('image_size', value) }))),
-          h('div', { style: { marginTop: 8 } },
-            h(Check, { checked: settings.allow_localhost === true, onChange: value => patch('allow_localhost', value) }, t('allowLocalhost'))),
-          h('div', { style: Object.assign({}, ui.row, { marginTop: 14 }) },
-            h(Btn, { variant: 'primary', disabled: busy !== '', onClick: save }, busy === 'save' ? t('saving') : t('saveSettings')),
-            h(Btn, { disabled: busy !== '' || !keyState.has_key, onClick: () => test('vision') }, busy === 'vision' ? t('working') : t('testVision')),
-            h(Btn, { disabled: busy !== '' || !keyState.has_key, onClick: () => test('image') }, busy === 'image' ? t('working') : t('testImage')))),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12, alignItems: 'start' } },
+          visionCard,
+          imageCard),
+        h('div', { style: ui.cardTight },
+          h('strong', { style: { fontSize: 13 } }, t('sharedCard')),
+          h('span', { style: { fontSize: 11.5, color: C.dim, marginLeft: 8 } }, t('sharedHint')),
+          h('div', { style: { marginTop: 10 } },
+            h(Check, { checked: settings.allow_localhost === true, onChange: value => patchShared('allow_localhost', value) }, t('allowLocalhost')))),
+        h('div', { style: ui.row },
+          h(Btn, { variant: 'primary', disabled: busy !== '', onClick: save }, busy === 'save' ? t('saving') : t('saveSettings'))),
         h('p', { style: Object.assign({}, ui.p, { fontSize: 11.5 }) }, t('enumsHint')))
     }
     // ==== 90-app.js =======================================================
@@ -2684,6 +2818,18 @@ window.__ModuleLoader__.load({
         setToast({ tone, message, at: Date.now() })
       }, [])
 
+      /* 两条通道各自判断：缺哪条就提示哪条，而不是笼统的「未配置」。 */
+      const applySettings = useCallback(data => {
+        if (!data) return
+        setSettings(data)
+        setHealth({
+          version: data.version || '',
+          vision: data.vision || { has_key: false },
+          image: data.image || { has_key: false },
+          configured: data.configured === true,
+        })
+      }, [])
+
       useEffect(() => {
         if (!toast) return undefined
         const timer = window.setTimeout(() => setToast(null), 3200)
@@ -2692,10 +2838,7 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         api('/settings')
-          .then(data => {
-            setSettings(data)
-            setHealth({ has_key: data.has_key, key_source: data.source })
-          })
+          .then(data => applySettings(data))
           .catch(failure => setError(failure.message))
       }, [])
 
@@ -2740,7 +2883,15 @@ window.__ModuleLoader__.load({
         go('task')
       }, [applySnapshot, go])
 
-      const configured = health && health.has_key
+      const configured = Boolean(health && health.configured)
+      // 两条通道分别提示：只缺一条时不要笼统说「未配置」。
+      const missingHint = !health || configured
+        ? ''
+        : !health.vision.has_key && !health.image.has_key
+          ? t('notConfigured')
+          : !health.vision.has_key
+            ? t('notConfiguredVision')
+            : t('notConfiguredImage')
 
       const navItems = [
         { id: 'home', label: t('navHome') },
@@ -2752,7 +2903,7 @@ window.__ModuleLoader__.load({
       let body = null
       if (view === 'home') body = h(HomeView, { settings, onCreated })
       else if (view === 'history') body = h(HistoryView, { onOpen: openTask })
-      else if (view === 'settings') body = h(SettingsView, { onSettings: data => { setSettings(data); setHealth({ has_key: data.has_key, key_source: data.source }) } })
+      else if (view === 'settings') body = h(SettingsView, { onSettings: applySettings })
       else if (view === 'task') {
         body = snapshot && snapshot.task
           ? h(TaskView, { snapshot, settings, refresh, notify, onChanged: applySnapshot })
@@ -2790,7 +2941,7 @@ window.__ModuleLoader__.load({
       error ? h(Notice, { tone: 'bad' }, `${t('errorPrefix')}${error}`) : null,
       !configured && view !== 'settings'
         ? h('div', { style: Object.assign({}, ui.cardTight, { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) },
-          h('span', { style: { fontSize: 12.5, color: C.dim } }, t('notConfigured')),
+          h('span', { style: { fontSize: 12.5, color: C.dim } }, missingHint),
           h(Btn, { small: true, onClick: () => go('settings') }, t('goSettings')))
         : null,
       body,

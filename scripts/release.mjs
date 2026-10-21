@@ -22,7 +22,7 @@ const run = (command, args) => {
 
 const node = process.execPath
 run(node, [path.join('scripts', 'build-client.mjs')])
-for (const test of ['schema.test.mjs', 'image.test.mjs', 'host.test.mjs', 'host-apply.test.mjs', 'client.test.mjs', 'render.test.mjs']) {
+for (const test of ['schema.test.mjs', 'relay.test.mjs', 'image.test.mjs', 'host.test.mjs', 'host-apply.test.mjs', 'client.test.mjs', 'render.test.mjs']) {
   run(node, [path.join('tests', test)])
 }
 

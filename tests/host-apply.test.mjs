@@ -108,7 +108,24 @@ check('health ok', health.status === 200 && health.body.ok === true, health.body
 check('health reports compositor', health.body && health.body.compositor === 'host-node', health.body)
 
 const settings = await hit('GET', '/api/ai-replica/settings')
-check('settings ok', settings.status === 200 && typeof settings.body.settings.base_url === 'string', settings.status)
+// 两条通道各自独立：视觉与生图必须各自带 base_url / model，且默认互不共享。
+const relaySettings = (settings.body && settings.body.settings) || {}
+check('settings ok', settings.status === 200
+  && Boolean(relaySettings.vision && relaySettings.image), settings.status)
+check('settings channels independent', Boolean(relaySettings.vision && relaySettings.image)
+  && typeof relaySettings.vision.base_url === 'string'
+  && typeof relaySettings.image.base_url === 'string'
+  && typeof relaySettings.vision.model === 'string'
+  && typeof relaySettings.image.model === 'string'
+  && typeof relaySettings.vision.path === 'string'
+  && typeof relaySettings.image.path === 'string', relaySettings.vision && relaySettings.image)
+check('settings expose relay enums', Boolean(settings.body && settings.body.relay)
+  && Array.isArray(settings.body.relay.vision_providers)
+  && Array.isArray(settings.body.relay.image_providers)
+  && Array.isArray(settings.body.relay.auth_styles), settings.body && settings.body.relay)
+check('settings report per-channel key state', Boolean(settings.body
+  && settings.body.vision && typeof settings.body.vision.has_key === 'boolean'
+  && settings.body.image && typeof settings.body.image.has_key === 'boolean'), settings.body && { vision: settings.body.vision, image: settings.body.image })
 
 const tasks = await hit('GET', '/api/ai-replica/tasks')
 check('task list ok', tasks.status === 200 && Array.isArray(tasks.body.items), tasks.status)

@@ -42,6 +42,18 @@
         setToast({ tone, message, at: Date.now() })
       }, [])
 
+      /* 两条通道各自判断：缺哪条就提示哪条，而不是笼统的「未配置」。 */
+      const applySettings = useCallback(data => {
+        if (!data) return
+        setSettings(data)
+        setHealth({
+          version: data.version || '',
+          vision: data.vision || { has_key: false },
+          image: data.image || { has_key: false },
+          configured: data.configured === true,
+        })
+      }, [])
+
       useEffect(() => {
         if (!toast) return undefined
         const timer = window.setTimeout(() => setToast(null), 3200)
@@ -50,10 +62,7 @@
 
       useEffect(() => {
         api('/settings')
-          .then(data => {
-            setSettings(data)
-            setHealth({ has_key: data.has_key, key_source: data.source })
-          })
+          .then(data => applySettings(data))
           .catch(failure => setError(failure.message))
       }, [])
 
@@ -98,7 +107,15 @@
         go('task')
       }, [applySnapshot, go])
 
-      const configured = health && health.has_key
+      const configured = Boolean(health && health.configured)
+      // 两条通道分别提示：只缺一条时不要笼统说「未配置」。
+      const missingHint = !health || configured
+        ? ''
+        : !health.vision.has_key && !health.image.has_key
+          ? t('notConfigured')
+          : !health.vision.has_key
+            ? t('notConfiguredVision')
+            : t('notConfiguredImage')
 
       const navItems = [
         { id: 'home', label: t('navHome') },
@@ -110,7 +127,7 @@
       let body = null
       if (view === 'home') body = h(HomeView, { settings, onCreated })
       else if (view === 'history') body = h(HistoryView, { onOpen: openTask })
-      else if (view === 'settings') body = h(SettingsView, { onSettings: data => { setSettings(data); setHealth({ has_key: data.has_key, key_source: data.source }) } })
+      else if (view === 'settings') body = h(SettingsView, { onSettings: applySettings })
       else if (view === 'task') {
         body = snapshot && snapshot.task
           ? h(TaskView, { snapshot, settings, refresh, notify, onChanged: applySnapshot })
@@ -148,7 +165,7 @@
       error ? h(Notice, { tone: 'bad' }, `${t('errorPrefix')}${error}`) : null,
       !configured && view !== 'settings'
         ? h('div', { style: Object.assign({}, ui.cardTight, { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) },
-          h('span', { style: { fontSize: 12.5, color: C.dim } }, t('notConfigured')),
+          h('span', { style: { fontSize: 12.5, color: C.dim } }, missingHint),
           h(Btn, { small: true, onClick: () => go('settings') }, t('goSettings')))
         : null,
       body,
