@@ -48,6 +48,9 @@
   - `dsh.profile.bundles` 内含 `@local/ai-replica`（旧的 `@local/personal-workbench` 已移除）
 
 改完 bundle 列表需要**重启 DSH** 才会加载 Host 半；重启后侧边栏出现「爆款图复刻」。
+开发期也可以在 profile 的 `cordis.patch.yml` 里临时 `insert` 同一个包，Loader 会热挂载（本次开发即用此法验证），但**正式入口只保留 bundles 一处**，避免同一个包被挂两次、路由重复注册。
+
+插件只注册**精确路径**路由：`/api` 前缀被连接网关占用，任何 `/api/*/*/…` 形式的未精确路径会被它返回 `401 unauthorized`，所以任务 id 走 `?id=` 查询参数（详见 `docs/contracts.md` §2）。
 
 ## 首次配置
 
